@@ -1,0 +1,18 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+.tmp_pip/
+
+# Runtime and vector data are mounted as volumes in docker-compose.yml.
+data/
+qdrant_storage/
+chroma/
+
+# Local outputs and caches
+*.log
+*.sqlite3-journal
+*.db-shm
+*.db-wal

@@ -1,0 +1,3717 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>飞书文献组会 Agent</title>
+  <style>
+/* ======================================================================
+   像素卡通主题。
+   设计语言：直角、3px 实线描边、硬投影、按压动效、方块滚动条、
+   棋盘格底纹。中文字体离线拿不到像素字体，正文用系统字体，
+   但整体按像素语言（描边/硬影/直角/节奏）设计。
+   ====================================================================== */
+:root {
+  --bg: #f3edd8;
+  --panel: #fffdf2;
+  --ink: #22302a;
+  --border: #22302a;
+  --border-soft: #d9d2b8;
+  --text: #232a26;
+  --muted: #6d7a6f;
+  --accent: #2f9e77;
+  --accent-dark: #1d7a5c;
+  --accent-soft: #e0f2e7;
+  --accent-pink: #f472b6;
+  --accent-yellow: #fbbf24;
+  --warn: #d97706;
+  --panel-soft: #fbf6e7;
+  --code-bg: #f0ead2;
+  --shadow: 4px 4px 0 var(--ink);
+  --shadow-sm: 3px 3px 0 var(--ink);
+  --radius: 0px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  color: var(--text);
+  /* 细棋盘格底纹：像素游戏的空地。 */
+  background-color: var(--bg);
+  background-image:
+    repeating-conic-gradient(rgba(34, 48, 42, 0.045) 0% 25%, transparent 0% 50%);
+  background-size: 22px 22px;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: var(--accent-yellow);
+  color: var(--ink);
+}
+
+/* 方块滚动条。 */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--panel-soft);
+  border-left: 2px solid var(--ink);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border: 2px solid var(--ink);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-dark);
+}
+
+/* ======================================================================
+   顶栏：游戏菜单条。
+   ====================================================================== */
+.game-topbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 3px solid var(--ink);
+}
+
+.game-title {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.game-title::before {
+  content: "✦";
+  margin-right: 8px;
+  color: var(--accent);
+}
+
+.view-tabs {
+  display: flex;
+  gap: 10px;
+}
+
+.view-tab {
+  padding: 8px 18px;
+  border: 3px solid var(--ink);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.view-tab:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.view-tab.active {
+  background: var(--accent);
+  color: #ffffff;
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mode-hint {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.mode-switch {
+  display: flex;
+  gap: 8px;
+}
+
+.mode-button,
+.small-button,
+.send-button {
+  border: 3px solid var(--ink);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  color: var(--text);
+  background: var(--panel);
+  font-weight: 700;
+}
+
+.mode-button,
+.small-button {
+  padding: 7px 12px;
+}
+
+.mode-button:hover,
+.small-button:hover {
+  background: var(--accent-soft);
+}
+
+.mode-button.active,
+.small-button.primary,
+.send-button {
+  color: #ffffff;
+  background: var(--accent);
+}
+
+.mode-button.active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+
+.small-button.warning {
+  color: #ffffff;
+  background: var(--warn);
+}
+
+.small-button.warning:hover {
+  background: var(--warn);
+  filter: brightness(1.06);
+}
+
+button:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+/* ======================================================================
+   视图容器。
+   ====================================================================== */
+.view {
+  display: none;
+  height: calc(100vh - 61px);
+}
+
+.view.active {
+  display: block;
+}
+
+.chat-layout {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
+}
+
+.sessions-panel,
+.chat-panel,
+.detail-panel {
+  background: var(--panel);
+  border: 3px solid var(--ink);
+  box-shadow: var(--shadow);
+  height: 100%;
+  overflow: hidden;
+}
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ======================================================================
+   会话侧栏。
+   ====================================================================== */
+.sessions-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 3px solid var(--ink);
+  background: var(--accent-soft);
+}
+
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  background: var(--accent);
+  border: 3px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.brand-title {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.conn-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border: 2px solid var(--ink);
+  background: var(--panel);
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--muted);
+  justify-content: flex-start;
+}
+
+.conn-chip:hover {
+  background: var(--accent-soft);
+}
+
+.conn-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--muted);
+}
+
+.conn-dot.ok {
+  background: var(--accent);
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+
+.conn-dot.bad {
+  background: #dc2626;
+}
+
+.new-session-btn {
+  margin: 12px;
+  padding: 10px;
+  border: 3px solid var(--ink);
+  background: var(--accent-yellow);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.new-session-btn:hover {
+  filter: brightness(1.05);
+}
+
+.session-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px 10px 10px;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px;
+  margin-bottom: 4px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.session-item:hover {
+  background: var(--panel-soft);
+  border-color: var(--border-soft);
+}
+
+.session-item.active {
+  background: var(--accent-soft);
+  border-color: var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.session-item .session-name {
+  flex: 1;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-item.active .session-name {
+  color: var(--accent-dark);
+  font-weight: 800;
+}
+
+.session-new {
+      color: var(--accent-pink);
+      margin-left: 4px;
+    }
+
+    .session-del {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 1px 5px;
+  visibility: hidden;
+}
+
+.session-item:hover .session-del {
+  visibility: visible;
+}
+
+.session-del:hover {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.12);
+}
+
+.sessions-footer {
+  padding: 10px 12px;
+  border-top: 3px solid var(--ink);
+  background: var(--panel-soft);
+}
+
+/* ======================================================================
+   聊天区。
+   ====================================================================== */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 3px solid var(--ink);
+  background: var(--accent-soft);
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.messages {
+  flex: 1;
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.message {
+  max-width: 82%;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  line-height: 1.75;
+  word-break: break-word;
+  font-size: 14.5px;
+}
+
+.message.user {
+  margin-left: auto;
+  color: #ffffff;
+  background: var(--accent);
+  border: 3px solid var(--ink);
+  box-shadow: var(--shadow-sm);
+  white-space: pre-wrap;
+  position: relative;
+}
+
+/* 用户气泡的方形小尾巴。 */
+.message.user::after {
+  content: "";
+  position: absolute;
+  right: -10px;
+  top: 12px;
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  border-right: 3px solid var(--ink);
+  border-top: 3px solid var(--ink);
+}
+
+.message.assistant {
+  margin-right: auto;
+  background: var(--panel-soft);
+  border: 3px solid var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+.message.assistant::before {
+  content: "🤖";
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+/* 助手气泡的 markdown 排版。 */
+.message .md :first-child {
+  margin-top: 0;
+}
+
+.message .md :last-child {
+  margin-bottom: 0;
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  margin: 14px 0 8px;
+  line-height: 1.4;
+}
+
+.md h1 {
+  font-size: 19px;
+  border-bottom: 3px solid var(--accent);
+  display: inline-block;
+  padding-bottom: 2px;
+}
+
+.md h2 {
+  font-size: 17px;
+}
+
+.md h3,
+.md h4 {
+  font-size: 15px;
+}
+
+.md p {
+  margin: 8px 0;
+}
+
+.md ul,
+.md ol {
+  margin: 8px 0;
+  padding-left: 22px;
+}
+
+.md li {
+  margin: 4px 0;
+}
+
+.md table {
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 13.5px;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.md th,
+.md td {
+  border: 2px solid var(--ink);
+  padding: 6px 10px;
+  text-align: left;
+  background: var(--panel);
+}
+
+.md th {
+  background: var(--accent-soft);
+}
+
+.md tr:nth-child(even) td {
+  background: var(--code-bg);
+}
+
+.md code {
+  padding: 1px 6px;
+  background: var(--code-bg);
+  border: 2px solid var(--border-soft);
+  font-family: Consolas, Menlo, monospace;
+  font-size: 13px;
+}
+
+.md pre {
+  margin: 10px 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: var(--code-bg);
+  border: 2px solid var(--ink);
+}
+
+.md pre code {
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.md blockquote {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 6px solid var(--accent);
+  color: var(--muted);
+}
+
+.md a {
+  color: var(--accent-dark);
+}
+
+.md hr {
+  border: none;
+  border-top: 3px solid var(--ink);
+  margin: 12px 0;
+}
+
+/* 气泡底部的操作行：复制按钮。 */
+.msg-actions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.copy-button {
+  border: 2px solid var(--ink);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+  padding: 3px 9px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.copy-button:hover {
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+}
+
+/* 流式回答进行中的状态提示。答案一开始输出就被移除。 */
+.status-line {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.status-line::before {
+  content: "▮";
+  margin-right: 7px;
+  color: var(--accent);
+  animation: status-pulse 0.9s steps(2) infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}
+
+.input-area {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 10px;
+  padding: 14px;
+  border-top: 3px solid var(--ink);
+  background: var(--accent-soft);
+}
+
+textarea,
+input {
+  width: 100%;
+  border: 3px solid var(--ink);
+  padding: 10px;
+  color: var(--text);
+  background: var(--panel);
+  outline: none;
+}
+
+textarea {
+  min-height: 50px;
+  max-height: 140px;
+  resize: vertical;
+}
+
+textarea:focus,
+input:focus {
+  box-shadow: 4px 4px 0 var(--accent);
+}
+
+.send-button {
+  padding: 10px;
+  letter-spacing: 2px;
+}
+
+.send-button.stop {
+  background: var(--warn);
+}
+
+/* ======================================================================
+   检索详情面板（对话视图右栏）。
+   ====================================================================== */
+.detail-panel {
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.side-section {
+  margin-bottom: 20px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.side-title {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--accent-dark);
+}
+
+.side-title::before {
+  content: "▚ ";
+}
+
+.section-header .side-title {
+  margin-bottom: 0;
+}
+
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.field-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.status-row span:first-child {
+  color: var(--muted);
+}
+
+.tool-item,
+.explain-item,
+.log-item {
+  border: 2px solid var(--ink);
+  background: var(--panel-soft);
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.tool-name {
+  font-weight: 800;
+  color: var(--accent-dark);
+  margin-bottom: 4px;
+}
+
+.tool-args {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--muted);
+}
+
+.explain-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.tag {
+  padding: 2px 7px;
+  border: 2px solid var(--ink);
+  background: var(--accent-yellow);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.check-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.check-label input {
+  width: auto;
+}
+
+.hint {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.raw-details summary {
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--accent-dark);
+  margin-bottom: 8px;
+}
+
+.raw-details pre,
+#rawTrace,
+#ingestLog {
+  border: 2px solid var(--ink);
+  background: var(--code-bg);
+  padding: 10px;
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ======================================================================
+   依据来源。
+   ====================================================================== */
+.source-history-note {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border: 2px solid var(--ink);
+  background: var(--accent-yellow);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.source-item {
+  border: 2px solid var(--ink);
+  background: var(--panel-soft);
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.source-item summary {
+  padding: 8px 10px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.source-item .source-meta {
+  padding: 0 10px 10px;
+  color: var(--muted);
+  white-space: pre-line;
+}
+
+/* 图表块缩略图：点击新页看原图 */
+.source-thumb {
+  display: block;
+  margin: 0 10px 10px;
+  max-width: calc(100% - 20px);
+  max-height: 240px;
+  border: 3px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  object-fit: contain;
+  cursor: zoom-in;
+}
+
+sup.cite {
+  color: #ffffff;
+  background: var(--accent);
+  border: 1px solid var(--ink);
+  padding: 0 4px;
+  font-weight: 800;
+  cursor: pointer;
+  user-select: none;
+}
+
+sup.cite:hover {
+  background: var(--accent-dark);
+}
+
+#messages.cite-dimmed sup.cite {
+  color: var(--muted);
+  background: var(--code-bg);
+  cursor: default;
+  font-weight: 400;
+}
+
+.source-item.cite-flash {
+  animation: cite-flash 1.6s ease;
+}
+
+@keyframes cite-flash {
+  0%, 55% {
+    background: var(--accent-yellow);
+  }
+  100% {
+    background: var(--panel-soft);
+  }
+}
+
+.source-num {
+  color: var(--accent-dark);
+}
+
+/* ======================================================================
+   管理视图（管理员）：独立整屏。
+   ====================================================================== */
+.manage-grid {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(300px, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+/* 宽卡（问答详情）占满一行。 */
+.manage-card.card-wide {
+  grid-column: 1 / -1;
+}
+
+/* 卡片内容过长时内部滚动，页面不被撑爆。 */
+.card-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* 最近日志卡：列表内滚。 */
+.manage-card .log-list {
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.manage-card {
+  background: var(--panel);
+  border: 3px solid var(--ink);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.manage-card .card-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 6px 10px;
+  background: var(--accent-soft);
+  border: 3px solid var(--ink);
+  display: inline-block;
+}
+
+/* ======================================================================
+   管理视图子页签（总览/详情/入库/日志/配置）与总览仪表盘。
+   ====================================================================== */
+.manage-tabs {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 18px 18px 0;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.manage-tab {
+  padding: 8px 16px;
+  border: 3px solid var(--ink);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.manage-tab:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.manage-tab.active {
+  background: var(--accent);
+  color: #ffffff;
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+
+.mtab-pane {
+  display: none;
+}
+
+.mtab-pane.active {
+  display: block;
+}
+
+.overview-head {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 14px 18px 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.badge-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.badge-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  border: 3px solid var(--ink);
+  background: var(--panel-soft);
+  padding: 6px 10px;
+}
+
+.badge {
+  border: 3px solid var(--ink);
+  padding: 1px 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.badge.ok {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.badge.bad {
+  background: var(--accent-pink);
+  color: #ffffff;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.stat-box {
+  border: 3px solid var(--ink);
+  background: var(--panel-soft);
+  padding: 8px 10px;
+}
+
+.stat-num {
+  font-size: 22px;
+  font-weight: 800;
+  font-family: "Courier New", ui-monospace, monospace;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.card-actions {
+  margin-top: 12px;
+}
+
+/* ======================================================================
+   评测报告页：KPI 信息条 + 像素风分组柱状图 + LLM 评判区块。
+   ====================================================================== */
+.report-wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 16px 18px 24px;
+}
+
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.kpi-strip .stat-box {
+  padding: 8px 12px;
+}
+
+.kpi-strip .stat-num {
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.report-section {
+  border: 3px solid var(--ink);
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.report-section .section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.report-section .section-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 6px 10px;
+  background: var(--accent-soft);
+  border: 3px solid var(--ink);
+  display: inline-block;
+}
+
+.metric-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.chart {
+  border: 3px solid var(--ink);
+  background: var(--panel-soft);
+  padding: 34px 14px 10px;
+  overflow-x: auto;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-chip::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--ink);
+  background: var(--c);
+}
+
+.chart-body {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 200px;
+  border-bottom: 3px solid var(--ink);
+  min-width: 520px;
+}
+
+.chart-group {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 5px;
+  height: 100%;
+  /* 四条横向网格线：0.25 / 0.5 / 0.75 / 1.0 */
+  background: repeating-linear-gradient(
+    to top,
+    transparent 0 48px,
+    var(--border-soft) 48px 50px
+  );
+}
+
+.chart-bar {
+  width: 24px;
+  border: 3px solid var(--ink);
+  border-bottom: none;
+  background: var(--c);
+  position: relative;
+  min-height: 4px;
+}
+
+.chart-bar .bar-val {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 800;
+  font-family: "Courier New", ui-monospace, monospace;
+  white-space: nowrap;
+}
+
+.chart-cats {
+  display: flex;
+  gap: 6px;
+  min-width: 520px;
+}
+
+.chart-cat {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 0 0;
+}
+
+.chart-cat .cat-sub {
+  display: block;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.chart-note {
+  margin-top: 10px;
+}
+
+.judge-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.judge-big {
+  border: 3px solid var(--ink);
+  background: var(--accent-soft);
+  padding: 12px 22px;
+  text-align: center;
+}
+
+.judge-big .stat-num {
+  font-size: 34px;
+}
+
+/* ======================================================================
+   观测页：意图成本横条 + SVG 折线图 + 迷你分布表。
+   ====================================================================== */
+.hbar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+}
+
+.hbar-label {
+  width: 110px;
+  text-align: right;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hbar-track {
+  flex: 1;
+  border: 3px solid var(--ink);
+  background: var(--panel-soft);
+  height: 22px;
+}
+
+.hbar-fill {
+  height: 100%;
+  background: var(--c, var(--accent));
+  min-width: 2px;
+}
+
+.hbar-val {
+  width: 185px;
+  font-family: "Courier New", ui-monospace, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.svg-chart-wrap {
+  border: 3px solid var(--ink);
+  background: var(--panel-soft);
+  padding: 10px 8px 4px;
+  overflow-x: auto;
+}
+
+.svg-chart-wrap svg {
+  display: block;
+  min-width: 640px;
+  width: 100%;
+  height: auto;
+}
+
+.svg-chart-wrap text {
+  font-family: "Courier New", ui-monospace, monospace;
+  font-size: 12px;
+  fill: var(--muted);
+}
+
+.svg-chart-wrap .axis-label {
+  font-weight: 700;
+  fill: var(--text);
+}
+
+.mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-top: 10px;
+}
+
+.mini-table th,
+.mini-table td {
+  border: 2px solid var(--ink);
+  padding: 5px 8px;
+  text-align: right;
+}
+
+.mini-table th {
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+
+.mini-table td:first-child,
+.mini-table th:first-child {
+  text-align: left;
+}
+
+/* ======================================================================
+   最近日志。
+   ====================================================================== */
+.log-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.log-question {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.log-answer {
+  color: var(--muted);
+}
+
+/* token 超阈值标红（阈值见 JS 的 TOKEN_ALERT，与服务端配置一致）。 */
+.tok-alert {
+  color: #d64545;
+  font-weight: 800;
+}
+
+/* ======================================================================
+   响应式与暗色模式。
+   ====================================================================== */
+@media (max-width: 1280px) {
+  .chat-layout {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .chat-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .chat-panel {
+    height: calc(100vh - 220px);
+  }
+
+  .sessions-panel {
+    height: auto;
+  }
+
+  .message {
+    max-width: 94%;
+  }
+
+  .game-topbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+/* 暗色模式：复古掌机（深蓝底 + 薄荷绿）。变量只换颜色。 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14181f;
+    --panel: #1c2230;
+    --ink: #0b0e14;
+    --border: #0b0e14;
+    --border-soft: #2a3244;
+    --text: #d9e2ef;
+    --muted: #8b98ad;
+    --accent: #3ecfae;
+    --accent-dark: #7fe0c8;
+    --accent-soft: #1d3a38;
+    --accent-pink: #f472b6;
+    --accent-yellow: #d9a821;
+    --warn: #c2711c;
+    --panel-soft: #212a3b;
+    --code-bg: #161d2b;
+  }
+}
+
+  </style>
+</head>
+<body>
+  <header class="game-topbar">
+    <div class="game-title">🤖 文献组会 Agent</div>
+    <div class="view-tabs">
+      <button class="view-tab active" data-view="viewChat">💬 对话</button>
+      <button class="view-tab" data-view="viewManage">🛠 管理</button>
+    </div>
+    <div class="topbar-right">
+      <span id="modeText" class="mode-hint">自动选择（由意图决定）</span>
+      <div class="mode-switch">
+        <button class="mode-button" data-mode="chat">Tool Agent</button>
+        <button class="mode-button" data-mode="planner-chat">Planner</button>
+        <button class="mode-button active" data-mode="ask">自动选择</button>
+      </div>
+    </div>
+  </header>
+
+  <div id="viewChat" class="view active">
+    <div class="chat-layout">
+      <aside class="sessions-panel">
+        <div class="brand">
+          <div class="brand-mark">阅</div>
+          <div class="brand-text">
+            <div class="brand-title">文献组会 Agent</div>
+            <button id="checkHealth" class="conn-chip" title="点击检测服务状态">
+              <span class="conn-dot" id="connDot"></span>
+              <span id="healthText">未检测</span>
+            </button>
+          </div>
+        </div>
+
+        <button id="newSession" class="new-session-btn">＋ 新会话</button>
+        <nav id="sessionList" class="session-list"></nav>
+
+        <div class="sessions-footer">
+          <div class="hint">会话列表保存在本浏览器；删除会话会同时清空服务端该 ID 的全部记忆。</div>
+        </div>
+      </aside>
+
+      <section class="chat-panel">
+        <div id="messages" class="messages">
+          <div class="message assistant">你好，可以问我文献、PDF、PPT、组会汇报提纲相关问题。</div>
+        </div>
+
+        <div class="input-area">
+          <textarea id="question" placeholder="比如：帮我生成偏见同化这篇文献的组会汇报提纲。"></textarea>
+          <button id="send" class="send-button">发送</button>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <div id="viewManage" class="view">
+    <div class="manage-tabs">
+      <button class="manage-tab active" data-mtab="overview">📊 总览</button>
+      <button class="manage-tab" data-mtab="report">📈 评测报告</button>
+      <button class="manage-tab" data-mtab="observe">📡 观测</button>
+      <button class="manage-tab" data-mtab="detail">🔍 问答详情</button>
+      <button class="manage-tab" data-mtab="ingest">📚 论文入库</button>
+      <button class="manage-tab" data-mtab="logs">🧾 日志</button>
+      <button class="manage-tab" data-mtab="config">⚙️ 配置</button>
+    </div>
+
+    <div id="mtab-overview" class="mtab-pane active">
+      <div class="overview-head">
+        <span class="hint" id="overviewMeta">尚未加载。</span>
+        <button id="reloadStats" class="small-button">刷新</button>
+      </div>
+      <div class="manage-grid">
+        <div class="manage-card">
+          <p class="card-title">🩺 服务状态</p>
+          <div id="ovServices" class="badge-stack"></div>
+        </div>
+        <div class="manage-card">
+          <p class="card-title">🗄️ 知识库</p>
+          <div id="ovKnowledge"></div>
+          <div class="card-actions">
+            <button class="small-button primary" data-goto-tab="ingest">进入入库 →</button>
+          </div>
+        </div>
+        <div class="manage-card">
+          <p class="card-title">📈 RAG 评测</p>
+          <div id="ovEval"></div>
+          <div class="card-actions">
+            <button class="small-button primary" data-goto-tab="report">进入报告 →</button>
+          </div>
+        </div>
+        <div class="manage-card">
+          <p class="card-title">📥 最近入库</p>
+          <div id="ovIngest"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="mtab-report" class="mtab-pane">
+      <div class="report-wrap">
+        <div class="kpi-strip" id="reportKpis"></div>
+
+        <div class="report-section">
+          <div class="section-head">
+            <p class="section-title">检索质量（确定性判分）</p>
+            <div class="metric-toggle">
+              <button id="metricRecall" class="small-button primary">Recall@5</button>
+              <button id="metricMrr" class="small-button">MRR</button>
+            </div>
+          </div>
+          <div id="retrievalChart"></div>
+          <div class="hint chart-note" id="retrievalNote"></div>
+        </div>
+
+        <div class="report-section">
+          <div class="section-head">
+            <p class="section-title">生成质量（e2e 全链路）</p>
+          </div>
+          <div id="e2eChart"></div>
+          <div class="hint chart-note" id="e2eNote"></div>
+        </div>
+
+        <div class="report-section">
+          <div class="section-head">
+            <p class="section-title">LLM 评判（忠实度 / 编造 / 拒答）</p>
+            <button id="runJudge" class="small-button primary">运行评判</button>
+          </div>
+          <div id="judgeBlock"></div>
+          <div class="hint chart-note">评判离线进行：拿评测集的参考答案当语义锚点，对已保存的 e2e 回答判忠实度与编造；拒答类单独判「是否恰当承认查不到」。约 1 分钟，走 DeepSeek。</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="mtab-observe" class="mtab-pane">
+      <div class="report-wrap">
+        <div class="report-section">
+          <div class="section-head">
+            <p class="section-title">意图成本（数据源 Langfuse · 近 7 天）</p>
+            <button id="reloadObserve" class="small-button">刷新</button>
+          </div>
+          <div class="kpi-strip" id="observeKpis"></div>
+          <div id="intentBars"></div>
+          <div class="hint chart-note" id="intentNote"></div>
+        </div>
+
+        <div class="report-section">
+          <div class="section-head">
+            <p class="section-title">评估趋势（历史评测结果纵向对比）</p>
+          </div>
+          <div id="trendChart"></div>
+          <div class="hint chart-note" id="trendNote"></div>
+        </div>
+
+        <div class="report-section">
+          <div class="section-head">
+            <p class="section-title">检索分数阈值标定（rerank top-score 扫描）</p>
+          </div>
+          <div class="kpi-strip" id="sweepKpis"></div>
+          <div id="sweepChart"></div>
+          <div class="hint chart-note" id="sweepNote"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="mtab-detail" class="mtab-pane">
+      <div class="manage-grid">
+        <div class="manage-card card-wide">
+          <div class="section-header">
+            <p class="card-title">🔍 问答详情（当前会话最近一次）</p>
+            <button id="clearTrace" class="small-button">清空</button>
+          </div>
+          <div class="card-scroll">
+            <div class="side-section">
+              <p class="side-title">工具调用</p>
+              <div id="toolTrace" class="tool-list">
+                <div class="tool-item">暂无工具调用。</div>
+              </div>
+            </div>
+
+            <div class="side-section">
+              <p class="side-title">检索解释</p>
+              <div id="retrievalExplain" class="explain-list">
+                <div class="explain-item">暂无检索解释。</div>
+              </div>
+            </div>
+
+            <div class="side-section">
+              <p class="side-title">依据来源</p>
+              <div id="sourceHistoryNote" class="source-history-note" style="display: none"></div>
+              <div id="sourceTrace" class="source-list">
+                <div class="source-item">暂无来源。</div>
+              </div>
+            </div>
+
+            <details class="raw-details">
+              <summary>原始返回</summary>
+              <pre id="rawTrace">暂无</pre>
+            </details>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="mtab-ingest" class="mtab-pane">
+      <div class="manage-grid">
+        <div class="manage-card">
+          <p class="card-title">📚 论文入库（增量）</p>
+          <div class="form-stack">
+            <input type="file" id="ingestFile" accept=".pdf" />
+            <input id="ingestTitle" placeholder="论文标题（选填，缺省自动提取）" />
+            <input id="ingestReader" placeholder="阅读整理者（可选）" />
+            <label class="field-label check-label">
+              <input type="checkbox" id="ingestForce" />
+              同哈希也强制重入库
+            </label>
+            <button id="ingestBtn" class="small-button primary">上传并入库</button>
+            <pre id="ingestLog">暂无入库任务。</pre>
+          </div>
+          <div class="hint">上传后后台解析入库（约 1~3 分钟），自动跑 5 道质检；同一 PDF 重复上传会自动跳过。</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="mtab-logs" class="mtab-pane">
+      <div class="manage-grid">
+        <div class="manage-card">
+          <p class="card-title">🧾 最近日志</p>
+          <div class="form-stack">
+            <input id="logSearch" placeholder="搜索日志（按问题/回答/模式过滤）" />
+            <div class="section-header">
+              <span class="hint" id="logCount">暂无日志。</span>
+              <button id="loadLogs" class="small-button primary">刷新</button>
+            </div>
+          </div>
+          <div id="logs" class="log-list card-scroll"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="mtab-config" class="mtab-pane">
+      <div class="manage-grid">
+        <div class="manage-card">
+          <p class="card-title">⚙️ 连接与配置</p>
+          <div class="status-row">
+            <span>接口地址</span>
+            <span id="apiUrl">http://127.0.0.1:8030</span>
+          </div>
+          <div class="form-stack">
+            <label class="field-label" for="threadIdInput">当前会话 ID</label>
+            <input id="threadIdInput" value="feishu-web-user-1" />
+            <label class="field-label" for="apiKey">API Key</label>
+            <input id="apiKey" type="password" placeholder="输入 API Key" />
+            <button id="saveConfig" class="small-button primary">保存配置</button>
+            <button id="clearThread" class="small-button warning">清空当前会话记忆</button>
+          </div>
+          <div class="hint">同一个会话 ID 会接着多轮对话聊；「清空当前会话记忆」删除该 ID 在服务端的 Agent 记忆与会话历史。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const apiBase = window.location.protocol === "file:"
+      ? "http://127.0.0.1:8030"
+      : window.location.origin;
+    // 单次请求 token 告警阈值——与服务端 TOKEN_ALERT_THRESHOLD（默认
+    // 50000，见 app/config.py）保持一致，超限在日志与问答详情里标红。
+    const TOKEN_ALERT = 50000;
+    const MODE_LABELS = {
+      chat: "Tool Agent",
+      "planner-chat": "Planner",
+      ask: "自动选择（由意图决定）",
+    };
+    let mode = "ask";
+
+    const messagesEl = document.getElementById("messages");
+    const questionEl = document.getElementById("question");
+    const sendEl = document.getElementById("send");
+    const rawTraceEl = document.getElementById("rawTrace");
+    const toolTraceEl = document.getElementById("toolTrace");
+    const retrievalExplainEl = document.getElementById("retrievalExplain");
+    const sourceTraceEl = document.getElementById("sourceTrace");
+    const modeTextEl = document.getElementById("modeText");
+    const logsEl = document.getElementById("logs");
+    const loadLogsEl = document.getElementById("loadLogs");
+    const apiKeyEl = document.getElementById("apiKey");
+    const threadIdEl = document.getElementById("threadIdInput");
+    const saveConfigEl = document.getElementById("saveConfig");
+    const clearThreadEl = document.getElementById("clearThread");
+    const healthTextEl = document.getElementById("healthText");
+    const checkHealthEl = document.getElementById("checkHealth");
+    const clearTraceEl = document.getElementById("clearTrace");
+
+    apiKeyEl.value = localStorage.getItem("feishuApiKey") || "";
+    threadIdEl.value = localStorage.getItem("feishuThreadId") || "feishu-web-user-1";
+
+    function headers() {
+      return {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKeyEl.value.trim(),
+      };
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function clipText(text, maxLength) {
+      const value = String(text || "");
+      return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+    }
+
+    // ------------------------------------------------------------------
+    // 受限 Markdown 渲染器。
+    //
+    // 后端答案带标题/加粗/表格/代码块，之前用 textContent 原样显示一坨
+    // 符号。不引 CDN 库（要离线可用、也不想在 DOM 里执行外部代码），
+    // 自写一个只认有限语法的渲染器。
+    //
+    // 安全模型：先把整段文本 HTML 转义，再叠加我们自己的标签——用户
+    // 内容里就算藏了 <script> 也早已被转义成实体。链接只放行 http(s)。
+    // ------------------------------------------------------------------
+
+    function escapeRegExp(value) {
+      return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function renderInline(escapedText) {
+      let out = escapedText;
+      // 行内代码先抠出来占位，避免内部的星号/下划线再被加粗规则误伤。
+      const codeSlots = [];
+      out = out.replace(/`([^`]+)`/g, (_match, code) => {
+        codeSlots.push(`<code>${code}</code>`);
+        return `\u0000${codeSlots.length - 1}\u0000`;
+      });
+      out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      out = out.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+      // 链接只放行 http/https，javascript: 之类直接当纯文本。
+      out = out.replace(
+        /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+        '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+      );
+      // 引用徽标：[3] → 可点击上标，点击展开右侧来源面板对应卡片。
+      // 放在链接规则之后——能成为链接的 [x](url) 已经被换掉了；
+      // 只认 1~2 位纯数字，避免误伤「[备注]」这类方括号词；
+      // 「[资料3]」是模型偶尔的写法，一并兼容；行内代码此时还是占位符。
+      out = out.replace(
+        /\[(?:资料)?(\d{1,2})\](?!\()/g,
+        '<sup class="cite" data-n="$1">[$1]</sup>',
+      );
+      out = out.replace(/\u0000(\d+)\u0000/g, (_m, index) => codeSlots[Number(index)]);
+      return out;
+    }
+
+    function inlineCell(raw) {
+      return renderInline(escapeHtml(raw.trim()));
+    }
+
+    function buildTable(headerCells, rows) {
+      const table = document.createElement("table");
+      const thead = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      headerCells.forEach((cell) => {
+        const th = document.createElement("th");
+        th.innerHTML = inlineCell(cell);
+        headRow.appendChild(th);
+      });
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement("tbody");
+      rows.forEach((row) => {
+        const tr = document.createElement("tr");
+        row.forEach((cell) => {
+          const td = document.createElement("td");
+          td.innerHTML = inlineCell(cell);
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      return table;
+    }
+
+    function renderMarkdown(text) {
+      const container = document.createElement("div");
+      container.className = "md";
+      const lines = String(text || "").split(/\r?\n/);
+
+      let index = 0;
+      let paragraph = [];
+
+      const flushParagraph = () => {
+        if (paragraph.length === 0) return;
+        const p = document.createElement("p");
+        p.innerHTML = renderInline(escapeHtml(paragraph.join(" ")));
+        container.appendChild(p);
+        paragraph = [];
+      };
+
+      while (index < lines.length) {
+        const line = lines[index];
+
+        // 代码围栏：成对收集，未闭合就吃到结尾。
+        if (line.trim().startsWith("```")) {
+          flushParagraph();
+          const codeLines = [];
+          index += 1;
+          while (index < lines.length && !lines[index].trim().startsWith("```")) {
+            codeLines.push(lines[index]);
+            index += 1;
+          }
+          index += 1;
+          const pre = document.createElement("pre");
+          const code = document.createElement("code");
+          code.textContent = codeLines.join("\n");
+          pre.appendChild(code);
+          container.appendChild(pre);
+          continue;
+        }
+
+        // 表格：当前行是 | 分隔，且下一行是 |---| 形态的分隔行。
+        const trimmed = line.trim();
+        const nextLine = lines[index + 1] || "";
+        if (
+          trimmed.startsWith("|") &&
+          trimmed.endsWith("|") &&
+          /^\|[\s:|-]+\|$/.test(nextLine.trim())
+        ) {
+          flushParagraph();
+          const headerCells = trimmed.split("|").slice(1, -1);
+          const rows = [];
+          index += 2;
+          while (index < lines.length) {
+            const rowLine = lines[index].trim();
+            if (!rowLine.startsWith("|") || !rowLine.endsWith("|")) break;
+            rows.push(rowLine.split("|").slice(1, -1));
+            index += 1;
+          }
+          container.appendChild(buildTable(headerCells, rows));
+          continue;
+        }
+
+        // 标题。答案里的 ## 二级标题最多，映射成偏小的字号免得气泡里太吵。
+        const heading = trimmed.match(/^(#{1,6})\s+(.*)$/);
+        if (heading) {
+          flushParagraph();
+          const level = Math.min(heading[1].length + 1, 4);
+          const h = document.createElement(`h${level}`);
+          h.innerHTML = renderInline(escapeHtml(heading[2]));
+          container.appendChild(h);
+          index += 1;
+          continue;
+        }
+
+        // 引用。
+        if (trimmed.startsWith(">")) {
+          flushParagraph();
+          const quote = document.createElement("blockquote");
+          quote.innerHTML = renderInline(escapeHtml(trimmed.replace(/^>\s?/, "")));
+          container.appendChild(quote);
+          index += 1;
+          continue;
+        }
+
+        // 水平线。
+        if (/^(-{3,}|\*{3,})$/.test(trimmed)) {
+          flushParagraph();
+          container.appendChild(document.createElement("hr"));
+          index += 1;
+          continue;
+        }
+
+        // 列表（单层）：连续的无序/有序行合并成一个列表。
+        // 注意 while 里的 pattern 必须带内容捕获组——漏了 (.*) 会让
+        // itemLine[1] 恒为 undefined，列表项全部渲染成空点（实测踩过）。
+        const bullet = trimmed.match(/^[-*]\s+(.*)$/);
+        const ordered = trimmed.match(/^\d+[.、]\s+(.*)$/);
+        if (bullet || ordered) {
+          flushParagraph();
+          const isOrdered = Boolean(ordered);
+          const list = document.createElement(isOrdered ? "ol" : "ul");
+          const pattern = isOrdered ? /^\d+[.、]\s+(.*)$/ : /^[-*]\s+(.*)$/;
+          while (index < lines.length) {
+            const itemLine = lines[index].trim().match(pattern);
+            if (!itemLine) break;
+            const li = document.createElement("li");
+            li.innerHTML = renderInline(escapeHtml(itemLine[1]));
+            list.appendChild(li);
+            index += 1;
+          }
+          container.appendChild(list);
+          continue;
+        }
+
+        if (!trimmed) {
+          flushParagraph();
+        } else {
+          paragraph.push(trimmed);
+        }
+        index += 1;
+      }
+
+      flushParagraph();
+      return container;
+    }
+
+    function addMessage(role, text, { markdown = false } = {}) {
+      const div = document.createElement("div");
+      div.className = `message ${role}`;
+      if (markdown) {
+        div.appendChild(renderMarkdown(text));
+      } else {
+        div.textContent = text;
+      }
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      // 返回元素：流式回答要往同一个气泡里逐个片段追加，
+      // 不能每来一个 token 就新建一条消息。
+      return div;
+    }
+
+    // 给助手气泡末尾挂一个复制按钮。
+    function attachCopyButton(bubble, getText) {
+      const row = document.createElement("div");
+      row.className = "msg-actions";
+      const button = document.createElement("button");
+      button.className = "copy-button";
+      button.textContent = "复制";
+      button.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(getText());
+          button.textContent = "已复制";
+        } catch {
+          button.textContent = "复制失败";
+        }
+        setTimeout(() => {
+          button.textContent = "复制";
+        }, 1500);
+      });
+      row.appendChild(button);
+      bubble.appendChild(row);
+    }
+
+    // 工具名的中文说明。后端给的是原始函数名，直接显示给用户太生硬。
+    // 与 app/agent.py 暴露的 10 个工具一一对应。
+    const TOOL_LABELS = {
+      search_all: "全库检索",
+      search_paper: "检索论文正文",
+      hybrid_search_ppt: "检索 PPT",
+      hybrid_search_literature_card: "检索文献卡片",
+      search_by_item: "在指定文献内检索",
+      semantic_search_literature: "按主题找文献",
+      list_literature_by_reader: "按整理者列文献",
+      list_literature_by_status: "按资料状态列文献",
+      list_missing_files: "查缺件情况",
+      get_literature_by_item_id: "按编号查文献",
+    };
+
+    // 注意跟下面那个 toolLabel 区分：那个说明「用了什么技术」，
+    // 这个说「正在做什么动作」。用途不同，名字分开。
+    function toolActionLabel(name) {
+      return TOOL_LABELS[name] || name;
+    }
+
+    // 流式问答。返回完整答案，顺便把过程渲染到界面上。
+    // abortSignal 由调用方持有——点「停止」时中断连接，
+    // 后端检测到断开会自行止损（取消检索与写历史）。
+    async function streamAsk(question, threadId, assistantEl, statusEl, abortSignal) {
+      const response = await fetch(`${apiBase}/ask/stream`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ question, thread_id: threadId }),
+        signal: abortSignal,
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(errorMessage(data, `请求失败（HTTP ${response.status}）`));
+      }
+      if (!response.body) {
+        throw new Error("当前浏览器不支持流式读取。");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let answer = "";
+      let started = false;
+      let renderQueued = false;
+      let result = null;
+      let stalled = false;
+
+      // 看门狗：超过 90 秒没有任何事件，判定响应挂死，
+      // 主动断开并把「响应超时」抛给调用方，不让状态行永远卡住。
+      let watchdog = setTimeout(() => {
+        stalled = true;
+        try {
+          controller.abort();
+        } catch {}
+      }, 90000);
+      const feed = () => {
+        clearTimeout(watchdog);
+        watchdog = setTimeout(() => {
+          stalled = true;
+          try {
+            controller.abort();
+          } catch {}
+        }, 90000);
+      };
+
+      // token 事件很密，每次全量重渲染 markdown 会浪费；
+      // 用 rAF 合帧：一帧最多渲染一次，视觉上无差别。
+      const renderNow = () => {
+        assistantEl.replaceChildren(renderMarkdown(answer));
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      };
+      const scheduleRender = () => {
+        if (renderQueued) return;
+        renderQueued = true;
+        requestAnimationFrame(() => {
+          renderQueued = false;
+          renderNow();
+        });
+      };
+
+      try {
+        while (true) {
+          feed();
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+        // SSE 以空行分隔事件。最后一段可能不完整，留到下一轮再拼。
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop();
+
+        for (const block of blocks) {
+          const line = block.trim();
+          if (!line.startsWith("data: ")) continue;
+
+          let event;
+          try {
+            event = JSON.parse(line.slice(6));
+          } catch {
+            continue;
+          }
+
+          if (event.type === "stage") {
+            const rewritten = event.rewritten
+              ? `（已改写为「${event.rewritten_query}」）`
+              : "";
+            statusEl.textContent = `已理解意图：${event.intent}${rewritten}`;
+          } else if (event.type === "tool") {
+            const what = event.query ? `：${event.query}` : "";
+            statusEl.textContent = `正在${toolActionLabel(event.name)}${what}`;
+          } else if (event.type === "token") {
+            if (!started) {
+              started = true;
+              statusEl.textContent = "";
+            }
+            answer += event.content || "";
+            scheduleRender();
+          } else if (event.type === "done") {
+            result = event;
+          } else if (event.type === "error") {
+            throw new Error(event.message || "流式请求失败。");
+          }
+        }
+        }
+      } catch (error) {
+        if (stalled) {
+          throw new Error("响应超时（90 秒无响应），请重试或换个问法。");
+        }
+        throw error;
+      } finally {
+        clearTimeout(watchdog);
+      }
+
+      return { answer: answer || (result && result.answer) || "", result };
+    }
+
+    function setMode(nextMode) {
+      mode = nextMode;
+      modeTextEl.textContent = MODE_LABELS[mode] || mode;
+      document.querySelectorAll(".mode-button").forEach((button) => {
+        button.classList.toggle("active", button.dataset.mode === mode);
+      });
+    }
+
+    function errorMessage(data, fallback) {
+      if (!data || !data.detail) {
+        return fallback;
+      }
+      if (typeof data.detail === "string") {
+        return data.detail;
+      }
+      const detail = data.detail;
+      return [
+        detail.error_type ? `[${detail.error_type}]` : "",
+        detail.message || "",
+        detail.suggestion ? `建议：${detail.suggestion}` : "",
+      ].filter(Boolean).join(" ") || fallback;
+    }
+
+    function renderToolTrace(data) {
+      const summaryCalls = data.trace_summary?.tool_calls || [];
+      if (summaryCalls.length > 0) {
+        toolTraceEl.innerHTML = summaryCalls.map((call, index) => `
+          <div class="tool-item">
+            <div class="tool-name">调用 ${index + 1}：${escapeHtml(toolActionLabel(call.name))}</div>
+            <div class="tool-args">${escapeHtml(JSON.stringify(call.args || {}, null, 2))}</div>
+          </div>
+        `).join("");
+        return;
+      }
+
+      if (data.mode === "planner_agent") {
+        const steps = data.step_results || [];
+        if (steps.length === 0) {
+          toolTraceEl.innerHTML = '<div class="tool-item">没有返回计划步骤。</div>';
+          return;
+        }
+        toolTraceEl.innerHTML = steps.map((step) => `
+          <div class="tool-item">
+            <div class="tool-name">#${step.step_index} ${escapeHtml(toolActionLabel(step.tool))}</div>
+            <div class="tool-args">query：${escapeHtml(step.query || "")}</div>
+            <div class="tool-args">reason：${escapeHtml(step.reason || "")}</div>
+          </div>
+        `).join("");
+        return;
+      }
+
+      const trace = data.trace || [];
+      const toolMessages = trace.filter((item) => item.type === "tool");
+      const aiToolCalls = trace.flatMap((item) => item.tool_calls || []);
+
+      if (toolMessages.length === 0 && aiToolCalls.length === 0) {
+        toolTraceEl.innerHTML = '<div class="tool-item">这次没有明显工具调用。</div>';
+        return;
+      }
+
+      const callHtml = aiToolCalls.map((call, index) => `
+        <div class="tool-item">
+          <div class="tool-name">调用 ${index + 1}：${escapeHtml(toolActionLabel(call.name))}</div>
+          <div class="tool-args">${escapeHtml(JSON.stringify(call.args || {}, null, 2))}</div>
+        </div>
+      `).join("");
+
+      const resultHtml = toolMessages.map((item, index) => `
+        <div class="tool-item">
+          <div class="tool-name">结果 ${index + 1}：${escapeHtml(toolActionLabel(item.name))}</div>
+          <div class="tool-args">${escapeHtml(clipText(item.content, 500))}</div>
+        </div>
+      `).join("");
+
+      toolTraceEl.innerHTML = callHtml + resultHtml;
+    }
+
+    function toolLabel(name) {
+      if (!name) {
+        return "未知工具";
+      }
+      if (name.startsWith("search_by_item")) {
+        return "单篇范围检索：向量 + BM25 + 重排";
+      }
+      if (name.startsWith("hybrid_")) {
+        return "混合检索：向量 + BM25，重排后返回";
+      }
+      if (name.startsWith("list_") || name === "get_literature_by_item_id") {
+        return "结构化索引：CSV 文献元数据";
+      }
+      if (name.includes("ppt")) {
+        return "PPT 检索";
+      }
+      if (name.includes("paper")) {
+        return "PDF 正文检索";
+      }
+      if (name.includes("card")) {
+        return "文献卡片检索";
+      }
+      return "普通检索工具";
+    }
+
+    function renderRetrievalExplanation(data) {
+      const calls = data.trace_summary?.tool_calls || [];
+      const sources = data.trace_summary?.sources || [];
+
+      if (calls.length === 0 && sources.length === 0) {
+        retrievalExplainEl.innerHTML = '<div class="explain-item">这次没有明显检索轨迹。</div>';
+        return;
+      }
+
+      const toolNames = [...new Set(calls.map((call) => call.name).filter(Boolean))];
+      const sourceTypes = [...new Set(sources.map((source) => source.content_type).filter(Boolean))];
+      const hybridSources = sources.filter((source) => source.retrieval_method === "hybrid_rrf");
+      const itemIds = [...new Set(sources.map((source) => source.item_id).filter(Boolean))].slice(0, 8);
+
+      const tags = [
+        ...toolNames.map((name) => toolLabel(name)),
+        ...sourceTypes.map((type) => `来源类型：${type}`),
+        hybridSources.length ? `Hybrid来源：${hybridSources.length} 条` : "",
+        itemIds.length ? `命中文献：${itemIds.join(", ")}` : "",
+      ].filter(Boolean);
+
+      const hybridNote = hybridSources.length
+        ? "本次结果包含 hybrid_rrf 来源，说明至少有一部分证据经过 BM25 关键词检索与向量检索融合排序，再过一遍重排模型。"
+        : "本次没有解析到 hybrid_rrf 来源，可能主要使用了结构化索引、旧检索工具或 Planner 步骤。";
+
+      const usage = data.token_usage;
+      const usageNote = usage && usage.total_tokens
+        ? `<div class="explain-meta">本次 token：输入 ${usage.input_tokens} / 输出 ${usage.output_tokens} / 合计 ${usage.total_tokens}（${usage.llm_calls} 次 LLM 调用，含意图识别与查询改写）。</div>`
+        : "";
+
+      retrievalExplainEl.innerHTML = `
+        <div class="explain-item">
+          <div class="explain-title">本次检索路线</div>
+          <div class="explain-meta">${escapeHtml(hybridNote)}</div>
+          ${usageNote}
+          <div class="tag-row">
+            ${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    // 来源列表面板。流式和同步两条路径最终都走这个函数。
+    function renderSourcesList(sources) {
+      sourceTraceEl.innerHTML = sourcesCardsHtml(sources);
+    }
+
+    // 纯构建器：路由到其他会话时也要用同一套卡片 HTML。
+    function sourcesCardsHtml(sources) {
+      if (!sources || sources.length === 0) {
+        return '<div class="source-item">这次没有解析出明确来源。</div>';
+      }
+
+      return sources.map((source, index) => {
+        const title = source.title || source.source_file || "未命名来源";
+        const meta = [
+          source.item_id ? `编号：${source.item_id}` : "",
+          source.content_type ? `类型：${source.content_type}` : "",
+          source.source_file ? `文件：${source.source_file}` : "",
+          source.location ? `位置：${source.location}` : "",
+          source.score ? `相似度：${source.score}` : "",
+          source.tool ? `工具：${source.tool}` : "",
+          source.retrieval_method ? `检索方式：${source.retrieval_method}` : "",
+          source.rrf_score ? `RRF分数：${source.rrf_score}` : "",
+          source.bm25_rank ? `BM25排名：${source.bm25_rank}` : "",
+          source.qdrant_rank ? `Qdrant排名：${source.qdrant_rank}` : "",
+        ].filter(Boolean).join("\n");
+
+        // n 是引用注册表给的全局编号，和答案里的 [n] 一一对应；
+        // 没有编号的（结构化索引条目）退回列表序号。
+        const label = source.n || index + 1;
+        const citeAttr = source.n ? ` data-n="${source.n}"` : "";
+
+        // 图表块带图片路径：后端把 data/processed/figures 挂在 /figures，
+        // 这里取文件名拼 URL，缩略图点击在新页看原图。
+        let thumb = "";
+        if (source.image) {
+          const name = String(source.image).split("/").pop();
+          const url = `${apiBase}/figures/${encodeURIComponent(name)}`;
+          thumb = `<a href="${url}" target="_blank" rel="noopener"><img class="source-thumb" src="${url}" alt="图表缩略图" loading="lazy"></a>`;
+        }
+
+        let sourceLink = "";
+        if (source.source_url) {
+          const safeUrl = String(source.source_url);
+          if (/^https?:\/\//i.test(safeUrl)) {
+            sourceLink = `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">打开飞书原文</a>`;
+          }
+        }
+
+        return `
+          <details class="source-item"${citeAttr}>
+            <summary><span class="source-num">[${label}]</span> ${escapeHtml(title)}</summary>
+            <div class="source-meta">${escapeHtml(meta)}</div>
+            ${sourceLink}
+            ${thumb}
+          </details>
+        `;
+      }).join("");
+    }
+
+    function renderRawTrace(data) {
+      const payload = data.mode === "planner_agent"
+        ? {
+            mode: data.mode,
+            plan: data.plan,
+            step_results: data.step_results,
+            latency_ms: data.latency_ms,
+            log_id: data.log_id,
+          }
+        : {
+            mode: data.mode,
+            trace: data.trace,
+            trace_summary: data.trace_summary,
+            latency_ms: data.latency_ms,
+            log_id: data.log_id,
+          };
+      rawTraceEl.textContent = JSON.stringify(payload, null, 2);
+    }
+
+    // 最近日志：缓存原始数据，搜索框按关键词过滤（问题/回答/模式）。
+    let allLogsCache = [];
+
+    function renderLogs(logs) {
+      const list = logs || [];
+      const countEl = document.getElementById("logCount");
+      if (countEl) {
+        countEl.textContent = list.length
+          ? `共 ${list.length} 条`
+          : "没有匹配的日志。";
+      }
+      if (list.length === 0) {
+        logsEl.innerHTML = '<div class="log-item">暂无日志。</div>';
+        return;
+      }
+
+      logsEl.innerHTML = list.map((log) => {
+        const over = (log.total_tokens || 0) >= TOKEN_ALERT;
+        const tokens = log.total_tokens
+          ? ` · <span class="${over ? "tok-alert" : ""}">${log.total_tokens} tok</span>`
+          : "";
+        const intentText = log.intent ? ` · ${log.intent}` : "";
+        return `
+        <div class="log-item">
+          <div class="log-meta">
+            <span>#${log.id} ${escapeHtml(log.mode)}${escapeHtml(intentText)}</span>
+            <span>${log.latency_ms}ms${tokens}</span>
+          </div>
+          <div class="log-question">${escapeHtml(clipText(log.question, 70))}</div>
+          <div class="log-answer">${escapeHtml(clipText(log.answer || log.error, 140))}</div>
+        </div>
+      `;
+      }).join("");
+    }
+
+    function renderLogsFiltered() {
+      const kw = (document.getElementById("logSearch")?.value || "")
+        .trim()
+        .toLowerCase();
+      if (!kw) {
+        renderLogs(allLogsCache);
+        return;
+      }
+      const filtered = allLogsCache.filter((log) =>
+        `${log.question || ""}${log.answer || ""}${log.error || ""}${log.mode || ""}${log.intent || ""}`
+          .toLowerCase()
+          .includes(kw)
+      );
+      renderLogs(filtered);
+    }
+
+    async function checkHealth() {
+      checkHealthEl.disabled = true;
+      healthTextEl.textContent = "检测中";
+      try {
+        const response = await fetch(`${apiBase}/health`);
+        const data = await response.json();
+        healthTextEl.textContent = response.ok ? data.status : "异常";
+      } catch (error) {
+        healthTextEl.textContent = "连接失败";
+      } finally {
+        checkHealthEl.disabled = false;
+      }
+    }
+
+    async function loadLogs() {
+      loadLogsEl.disabled = true;
+      loadLogsEl.textContent = "刷新中";
+      try {
+        const response = await fetch(`${apiBase}/admin/logs?limit=8`, {
+          headers: headers(),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(errorMessage(data, "日志读取失败"));
+        }
+        allLogsCache = data.logs || [];
+        renderLogs(allLogsCache);
+      } catch (error) {
+        logsEl.innerHTML = `<div class="log-item">日志读取失败：${escapeHtml(error.message)}</div>`;
+      } finally {
+        loadLogsEl.disabled = false;
+        loadLogsEl.textContent = "刷新";
+      }
+    }
+
+    async function clearCurrentThread() {
+      const threadId = threadIdEl.value.trim() || "feishu-web-user-1";
+      const confirmed = window.confirm(`确定清空会话 ${threadId} 的 Agent 记忆吗？`);
+      if (!confirmed) {
+        return;
+      }
+
+      clearThreadEl.disabled = true;
+      clearThreadEl.textContent = "清空中";
+
+      try {
+        const response = await fetch(`${apiBase}/admin/clear-thread`, {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify({ thread_id: threadId }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(errorMessage(data, "清空会话失败"));
+        }
+
+        messagesEl.innerHTML = "";
+        addMessage("assistant", `会话 ${threadId} 已清空，可以重新开始问。`);
+        toolTraceEl.innerHTML = '<div class="tool-item">暂无工具调用。</div>';
+        retrievalExplainEl.innerHTML = '<div class="explain-item">暂无检索解释。</div>';
+        sourceTraceEl.innerHTML = '<div class="source-item">暂无来源。</div>';
+        rawTraceEl.textContent = JSON.stringify(data, null, 2);
+      } catch (error) {
+        addMessage("assistant", `清空会话失败：${error.message}`);
+      } finally {
+        clearThreadEl.disabled = false;
+        clearThreadEl.textContent = "清空当前会话";
+      }
+    }
+
+    // 流式结束后渲染右侧面板。
+    //
+    // done 事件现在带 sources（后端从工具结果原文里提取，与同步接口
+    // 同一套逻辑），来源面板不再需要占位文案。
+    function renderStreamTrace(result) {
+      if (!result) {
+        toolTraceEl.innerHTML = '<div class="tool-item">流式模式不返回完整轨迹。</div>';
+        retrievalExplainEl.innerHTML = '<div class="explain-item">同上。</div>';
+        sourceTraceEl.innerHTML = '<div class="source-item">同上。</div>';
+        return;
+      }
+
+      applyPanels(buildPanelsFromResult(result), result);
+      // 面板在 messages 观察器之外，流结束立即随会话落盘。
+      saveSessionPanels();
+    }
+
+    // 统一面板构建：流式 done 事件与同步接口的 trace_summary 都能用。
+    function buildPanelsFromResult(result) {
+      const tools = result.tools || [];
+      const toolsHtml = tools.length
+        ? tools
+            .map(
+              (item, index) =>
+                `<div class="tool-item">${index + 1}. ${escapeHtml(toolActionLabel(item.name))}${
+                  item.query ? `：${escapeHtml(item.query)}` : ""
+                }</div>`,
+            )
+            .join("")
+        : '<div class="tool-item">这次没有调用工具。</div>';
+
+      // 所有插值都过 escapeHtml：rewritten_query 源自用户输入，
+      // 直接拼 innerHTML 是之前留下的注入隐患。
+      const usage = result.token_usage;
+      const usageOver = usage && (usage.total_tokens || 0) >= TOKEN_ALERT;
+      const usageText = usage && usage.total_tokens
+        ? `token：输入 ${usage.input_tokens} / 输出 ${usage.output_tokens} / <span class="${usageOver ? "tok-alert" : ""}">合计 ${usage.total_tokens}</span>（${usage.llm_calls} 次调用）`
+        : "";
+      const explainHtml = [
+        `<div class="explain-item">意图：${escapeHtml(result.intent || "-")}</div>`,
+        `<div class="explain-item">链路：${escapeHtml(result.mode || "-")}</div>`,
+        `<div class="explain-item">改写后查询：${escapeHtml(result.rewritten_query || "-")}</div>`,
+        `<div class="explain-item">耗时：${result.latency_ms || 0} ms</div>`,
+        usageText ? `<div class="explain-item">${escapeHtml(usageText)}</div>` : "",
+      ].join("");
+
+      return {
+        tools: toolsHtml,
+        explain: explainHtml,
+        sources: sourcesCardsHtml(result.sources),
+        noteDisplay: "none",
+        noteText: "",
+        raw: JSON.stringify(result, null, 2),
+      };
+    }
+
+    // 把构建好的面板应用到 DOM。
+    function applyPanels(panels, result) {
+      toolTraceEl.innerHTML = panels.tools;
+      retrievalExplainEl.innerHTML = panels.explain;
+      sourceTraceEl.innerHTML = panels.sources;
+      sourceHistoryNote.style.display = panels.noteDisplay;
+      sourceHistoryNote.textContent = panels.noteText;
+      rawTraceEl.textContent = panels.raw;
+      updateCiteAffordance(result.sources, result.tools);
+    }
+
+    // 引用徽标的可用性跟着来源面板走：
+    // - 有来源（含从会话历史恢复的）：徽标正常可点；
+    //   本轮没调工具时在面板顶部说明来源来自历史，编号沿用。
+    // - 完全没有来源：徽标置灰，暗示「这个编号现在没有卡片可看」。
+    function updateCiteAffordance(sources, tools) {
+      const hasSources = (sources || []).length > 0;
+      const usedHistory = hasSources && (tools || []).length === 0;
+      messagesEl.classList.toggle("cite-dimmed", !hasSources);
+      const note = document.getElementById("sourceHistoryNote");
+      if (usedHistory) {
+        note.textContent = "本轮未调用检索工具，以上来源来自本会话之前的检索，编号沿用。";
+        note.style.display = "";
+      } else {
+        note.style.display = "none";
+      }
+    }
+
+    async function sendQuestion() {
+      const question = questionEl.value.trim();
+      const threadId = threadIdEl.value.trim() || "feishu-web-user-1";
+      if (!question) {
+        return;
+      }
+
+      // 请求绑定会话：响应完成时如果用户已切到别的会话，
+      // 结果写回发起请求的会话存储（并给列表项加 ✦ 提示），
+      // 绝不渲染进当前正在看的会话——否则两个会话的内容会互相串。
+      const requestSessionId = currentSessionId;
+
+      addMessage("user", question);
+      questionEl.value = "";
+      sendEl.disabled = false;
+      sendEl.classList.add("stop");
+      sendEl.textContent = "■ 停止";
+      toolTraceEl.innerHTML = '<div class="tool-item">请求中...</div>';
+      retrievalExplainEl.innerHTML = '<div class="explain-item">请求中...</div>';
+      sourceTraceEl.innerHTML = '<div class="explain-item">请求中...</div>';
+      rawTraceEl.textContent = "请求中...";
+
+      // 自动选择模式走流式。
+      //
+      // 一次问答要好几秒，其中大半时间在做检索和重排。同步接口下用户
+      // 面对的是整段空白，然后答案一下子蹦出来；流式把「在理解问题」
+      // 「正在检索什么」这些中间状态露出来，同样的耗时感觉短得多。
+      //
+      // 另外两个模式（Tool Agent / Planner）保持同步——流式端点只做了
+      // ask 这一条链路，没接 PlannerAgent。
+      if (mode === "ask") {
+        const controller = new AbortController();
+        let stopped = false;
+        const onStop = () => {
+          stopped = true;
+          controller.abort();
+        };
+        sendEl.addEventListener("click", onStop);
+
+        const bubble = addMessage("assistant", "");
+        const status = document.createElement("div");
+        status.className = "status-line";
+        status.textContent = "正在理解问题…";
+        const body = document.createElement("div");
+        bubble.appendChild(status);
+        bubble.appendChild(body);
+
+        try {
+          const { answer, result } = await streamAsk(
+            question, threadId, body, status, controller.signal,
+          );
+          status.remove();
+          if (currentSessionId !== requestSessionId) {
+            // 用户已经切到别的会话：结果落回发起请求的会话存储，
+            // 不渲染当前视图（面板/消息都不串）。
+            routeResultToSession(requestSessionId, question, answer, result);
+            return;
+          }
+          if (answer) {
+            body.replaceChildren(renderMarkdown(answer));
+            attachCopyButton(bubble, () => answer);
+          } else if (!stopped) {
+            body.textContent = "没有返回回答。";
+          }
+          renderStreamTrace(result);
+          await loadLogs();
+        } catch (error) {
+          status.remove();
+          // 主动点「停止」不是错误：后端会检测到断开并止损。
+          body.textContent = stopped ? "（已停止。）" : `请求失败：${error.message}`;
+          if (currentSessionId !== requestSessionId) {
+            routeResultToSession(
+              requestSessionId,
+              question,
+              `（会话切换前发起的请求失败：${error.message}）`,
+              null
+            );
+          }
+        } finally {
+          sendEl.removeEventListener("click", onStop);
+          sendEl.classList.remove("stop");
+          sendEl.disabled = false;
+          sendEl.textContent = "发送";
+        }
+        return;
+      }
+
+      try {
+        const response = await fetch(`${apiBase}/${mode}`, {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify({
+            question,
+            thread_id: threadId,
+            include_trace: true,
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(errorMessage(data, "请求失败"));
+        }
+
+        if (currentSessionId !== requestSessionId) {
+          // 用户已切走：结果落回发起请求的会话存储，不动当前视图。
+          routeResultToSession(requestSessionId, question, data.answer || "", {
+            tools:
+              data.trace_summary?.tool_calls ||
+              (data.step_results || []).map((step) => ({
+                name: step.tool,
+                query: step.query,
+              })) ||
+              [],
+            sources: data.sources ?? data.trace_summary?.sources ?? [],
+            intent: data.intent,
+            mode: data.mode,
+            rewritten_query: data.rewritten_query,
+            latency_ms: data.latency_ms,
+          });
+          return;
+        }
+        const bubble = addMessage("assistant", "");
+        bubble.appendChild(renderMarkdown(data.answer || "没有返回回答。"));
+        if (data.answer) {
+          attachCopyButton(bubble, () => data.answer || "");
+        }
+        renderToolTrace(data);
+        renderRetrievalExplanation(data);
+        renderSourcesList(data.trace_summary?.sources);
+        renderRawTrace(data);
+        // 同步链路的面板渲染也要随会话落盘。
+        saveSessionPanels();
+        await loadLogs();
+      } catch (error) {
+        addMessage("assistant", `请求失败：${error.message}`);
+        toolTraceEl.innerHTML = '<div class="tool-item">请求失败。</div>';
+        retrievalExplainEl.innerHTML = '<div class="explain-item">请求失败。</div>';
+        sourceTraceEl.innerHTML = '<div class="source-item">请求失败。</div>';
+        rawTraceEl.textContent = String(error);
+      } finally {
+        sendEl.disabled = false;
+        sendEl.textContent = "发送";
+      }
+    }
+
+    document.querySelectorAll(".mode-button").forEach((button) => {
+      button.addEventListener("click", () => setMode(button.dataset.mode));
+    });
+
+    saveConfigEl.addEventListener("click", () => {
+      localStorage.setItem("feishuApiKey", apiKeyEl.value.trim());
+      localStorage.setItem("feishuThreadId", threadIdEl.value.trim());
+      addMessage("assistant", "配置已保存。");
+    });
+
+    sendEl.addEventListener("click", sendQuestion);
+    loadLogsEl.addEventListener("click", loadLogs);
+    checkHealthEl.addEventListener("click", checkHealth);
+    clearThreadEl.addEventListener("click", clearCurrentThread);
+
+    // 答案里的引用徽标点击代理：展开来源面板、定位并高亮对应卡片。
+    // 挂在消息区上做事件代理——气泡和徽标每次流式渲染都会重建，
+    // 代理只需绑一次。编号在来源里找不到（模型标了面板截断外的号）
+    // 就不动作，徽标仍是普通上标。
+    // 来源面板已挪到管理视图：点徽标先切视图，再定位高亮对应卡。
+    messagesEl.addEventListener("click", (event) => {
+      const cite = event.target.closest("sup.cite");
+      if (!cite) return;
+      switchView("viewManage");
+      const card = sourceTraceEl.querySelector(
+        `.source-item[data-n="${cite.dataset.n}"]`,
+      );
+      if (!card) return;
+      card.open = true;
+      sourceTraceEl
+        .querySelectorAll(".source-item.cite-flash")
+        .forEach((item) => item.classList.remove("cite-flash"));
+      card.classList.add("cite-flash");
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    clearTraceEl.addEventListener("click", () => {
+      toolTraceEl.innerHTML = '<div class="tool-item">暂无工具调用。</div>';
+      retrievalExplainEl.innerHTML = '<div class="explain-item">暂无检索解释。</div>';
+      sourceTraceEl.innerHTML = '<div class="source-item">暂无来源。</div>';
+      rawTraceEl.textContent = "暂无";
+    });
+
+    questionEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        if (!sendEl.classList.contains("stop")) {
+          sendQuestion();
+        }
+      }
+    });
+
+    // ------------------------------------------------------------------
+    // 论文入库：上传 PDF → 轮询后台任务 → 展示日志与报告。
+    // ------------------------------------------------------------------
+
+    const ingestFileEl = document.getElementById("ingestFile");
+    const ingestReaderEl = document.getElementById("ingestReader");
+    const ingestForceEl = document.getElementById("ingestForce");
+    const ingestBtnEl = document.getElementById("ingestBtn");
+    const ingestLogEl = document.getElementById("ingestLog");
+    let ingestTimer = null;
+
+    function setIngestBusy(busy) {
+      ingestBtnEl.disabled = busy;
+      ingestBtnEl.textContent = busy ? "入库中…" : "上传并入库";
+    }
+
+    async function startIngest() {
+      const file = ingestFileEl.files[0];
+      if (!file) {
+        ingestLogEl.textContent = "请先选择 PDF 文件。";
+        return;
+      }
+
+      setIngestBusy(true);
+      ingestLogEl.textContent = "上传中…";
+      const form = new FormData();
+      form.append("file", file);
+      form.append("title", document.getElementById("ingestTitle").value.trim());
+      form.append("reader", ingestReaderEl.value.trim());
+      form.append("force", ingestForceEl.checked);
+
+      try {
+        const response = await fetch(`${apiBase}/admin/ingest`, {
+          method: "POST",
+          headers: { "X-API-Key": apiKeyEl.value.trim() },
+          body: form,
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(errorMessage(data, "提交失败"));
+        }
+        ingestLogEl.textContent = "已提交，后台解析入库中（约 1~3 分钟）…";
+        if (ingestTimer) clearInterval(ingestTimer);
+        ingestTimer = setInterval(() => pollIngest(data.task_id), 3000);
+      } catch (error) {
+        ingestLogEl.textContent = `提交失败：${error.message}`;
+        setIngestBusy(false);
+      }
+    }
+
+    async function pollIngest(taskId) {
+      try {
+        const response = await fetch(`${apiBase}/admin/ingest/${taskId}`, {
+          headers: headers(),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(errorMessage(data, "状态查询失败"));
+        }
+
+        const lines = [...(data.logs || [])];
+        if (data.status === "running") lines.push("…进行中");
+        ingestLogEl.textContent = lines.join("\n") || "…";
+
+        if (data.status === "running") return;
+
+        clearInterval(ingestTimer);
+        ingestTimer = null;
+        setIngestBusy(false);
+
+        if (data.status === "skipped") {
+          ingestLogEl.textContent += "\n✓ 同一 PDF 已入库，自动跳过。";
+        } else if (data.status === "done") {
+          const report = data.report || {};
+          ingestLogEl.textContent += [
+            "",
+            `✓ 入库完成：item_id=${report.item_id}`,
+            `  子块 ${report.inserted}（删旧 ${report.deleted}），父块 ${report.parent_count}`,
+            `  索引 CSV：${report.csv_action}，QC 全部通过`,
+          ].join("\n");
+        } else {
+          ingestLogEl.textContent += `\n✗ 入库失败：${data.error || "未知错误"}\n（已自动回滚，未污染存量）`;
+        }
+        await loadLogs();
+      } catch (error) {
+        clearInterval(ingestTimer);
+        ingestTimer = null;
+        setIngestBusy(false);
+        ingestLogEl.textContent += `\n状态查询失败：${error.message}`;
+      }
+    }
+
+    ingestBtnEl.addEventListener("click", startIngest);
+
+    const logSearchEl = document.getElementById("logSearch");
+    if (logSearchEl) {
+      logSearchEl.addEventListener("input", renderLogsFiltered);
+    }
+
+// ======================================================================
+// 视图切换：对话（用户）与管理（管理员）两个独立视图。
+// ======================================================================
+const viewTabButtons = document.querySelectorAll(".view-tab");
+const viewPanes = {
+  viewChat: document.getElementById("viewChat"),
+  viewManage: document.getElementById("viewManage"),
+};
+
+function switchView(viewName) {
+  viewTabButtons.forEach((item) =>
+    item.classList.toggle("active", item.dataset.view === viewName)
+  );
+  Object.entries(viewPanes).forEach(([name, pane]) => {
+    pane.classList.toggle("active", name === viewName);
+  });
+  if (viewName === "viewManage") {
+    maybeLoadOverview();
+  }
+}
+
+viewTabButtons.forEach((button) => {
+  button.addEventListener("click", () => switchView(button.dataset.view));
+});
+
+// ======================================================================
+// 管理视图子页签 + 总览仪表盘。
+//
+// 总览数据来自 /admin/stats：服务状态（Milvus / Langfuse / 模型配置）、
+// 知识库规模、最新一次评测摘要与最近一次入库记录，全部只读。
+// 打开总览页签或点「刷新」才请求，页面加载本身不发这个请求。
+// ======================================================================
+const manageTabButtons = document.querySelectorAll(".manage-tab");
+const managePanes = {};
+document.querySelectorAll(".mtab-pane").forEach((pane) => {
+  managePanes[pane.id.replace("mtab-", "")] = pane;
+});
+
+function switchManageTab(name) {
+  manageTabButtons.forEach((item) =>
+    item.classList.toggle("active", item.dataset.mtab === name)
+  );
+  Object.entries(managePanes).forEach(([key, pane]) => {
+    pane.classList.toggle("active", key === name);
+  });
+  if (name === "overview") {
+    loadOverview();
+  }
+  if (name === "report" && !evalReportLoadedOnce) {
+    loadEvalReport();
+  }
+  if (name === "observe" && !observeLoadedOnce) {
+    loadObserve();
+  }
+}
+
+manageTabButtons.forEach((button) => {
+  button.addEventListener("click", () => switchManageTab(button.dataset.mtab));
+});
+
+// 卡片上的「进入 →」按钮跳到对应子页签。
+document.querySelectorAll("[data-goto-tab]").forEach((button) => {
+  button.addEventListener("click", () => switchManageTab(button.dataset.gotoTab));
+});
+
+let overviewLoadedOnce = false;
+
+function maybeLoadOverview() {
+  if (!overviewLoadedOnce) {
+    loadOverview();
+  }
+}
+
+const overviewMetaEl = document.getElementById("overviewMeta");
+
+function badgeHtml(ok, okText, badText) {
+  const text = ok ? okText : badText || "未连接";
+  return `<span class="badge ${ok ? "ok" : "bad"}">${ok ? "🟢" : "🔴"} ${escapeHtml(text)}</span>`;
+}
+
+function statBoxHtml(num, label) {
+  return `<div class="stat-box"><div class="stat-num">${num}</div><div class="stat-label">${escapeHtml(label)}</div></div>`;
+}
+
+function fmtPct(rate) {
+  return rate === null || rate === undefined ? "—" : Math.round(rate * 1000) / 10 + "%";
+}
+
+function fmtStamp(iso) {
+  const m = String(iso || "").match(/\d{2}-\d{2}T\d{2}:\d{2}/);
+  return m ? m[0].replace("T", " ") : "—";
+}
+
+async function loadOverview() {
+  const servicesEl = document.getElementById("ovServices");
+  if (!servicesEl) {
+    return;
+  }
+  overviewMetaEl.textContent = "加载中…";
+  try {
+    const response = await fetch(`${apiBase}/admin/stats`, { headers: headers() });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(errorMessage(data, "加载失败"));
+    }
+    renderOverview(data);
+    overviewMetaEl.textContent = `数据加载于 ${new Date().toLocaleTimeString()}`;
+    overviewLoadedOnce = true;
+  } catch (error) {
+    overviewMetaEl.textContent = `加载失败：${error.message}`;
+  }
+}
+
+function renderOverview(data) {
+  const services = data.services || {};
+  const milvus = services.milvus || {};
+  const langfuse = services.langfuse || {};
+  const llm = services.llm || {};
+
+  document.getElementById("ovServices").innerHTML = [
+    `<div class="badge-row"><span>后端 API</span>${badgeHtml(true, "运行中")}</div>`,
+    `<div class="badge-row"><span>Milvus 向量库</span>${badgeHtml(milvus.ok, "正常", "未连接")}</div>`,
+    `<div class="badge-row"><span>Langfuse 观测</span>${badgeHtml(langfuse.enabled, "已接入", "未启用")}</div>`,
+    `<div class="badge-row"><span>大模型</span>${badgeHtml(llm.configured, llm.model || "已配置", "未配置")}</div>`,
+    milvus.ok
+      ? ""
+      : `<div class="hint">Milvus：${escapeHtml(String(milvus.error || "").slice(0, 90))}</div>`,
+  ].join("");
+
+  const knowledge = data.knowledge || {};
+  document.getElementById("ovKnowledge").innerHTML = `<div class="stat-grid">${[
+    statBoxHtml(knowledge.chunks ?? "—", "Milvus 子块"),
+    statBoxHtml(knowledge.parents ?? "—", "父块（本地补全表）"),
+    statBoxHtml(knowledge.papers ?? "—", "语料论文"),
+    statBoxHtml(knowledge.manifest_entries ?? "—", "增量入库记录"),
+  ].join("")}</div>`;
+
+  const evals = data.evals || {};
+  const e2e = evals.e2e;
+  const retrieval = evals.retrieval;
+  document.getElementById("ovEval").innerHTML = `<div class="stat-grid">${[
+    statBoxHtml(e2e ? fmtPct(e2e.pass_rate) : "—", `e2e 通过率（${e2e ? e2e.total : 0} 条${e2e && e2e.total < 100 ? "·抽样" : ""}）`),
+    statBoxHtml(retrieval ? fmtPct(retrieval.item_hit_rate) : "—", "检索 item 命中率"),
+    statBoxHtml(
+      e2e && e2e.intent_accuracy != null ? fmtPct(e2e.intent_accuracy) : "—",
+      "意图识别准确率",
+    ),
+    statBoxHtml(`${evals.set_size ?? "—"}+${evals.special_size ?? 0}`, "测试集 主+专项"),
+  ].join("")}</div><div class="hint">上次评测：${e2e ? fmtStamp(e2e.finished_at) : "无记录"}，由 scripts/run_eval.py 产出。</div>`;
+
+  const last = (data.ingest || {}).last;
+  document.getElementById("ovIngest").innerHTML = last
+    ? `<div class="stat-grid">${[
+        statBoxHtml(escapeHtml(String(last.item_id ?? "—")), "最近入库 item"),
+        statBoxHtml(`${last.chunk_count ?? "—"}/${last.parent_count ?? "—"}`, "子块/父块"),
+      ].join("")}</div><div class="hint">《${escapeHtml(
+        String(last.pdf_file || "未知文件").replace(/\.pdf$/i, ""),
+      )}》· ${fmtStamp(last.ingested_at)} · 入库时 5 道质检通过。</div>`
+    : '<div class="hint">还没有增量入库记录。</div>';
+}
+
+document.getElementById("reloadStats").addEventListener("click", loadOverview);
+
+// ======================================================================
+// 评测报告页：/admin/eval-report 的可视化。
+//
+// 三个区块的数据口径不同，图上要分开看：
+// - 检索质量：只有带期望文献的类别（英文/中文事实、跨语言）参与，
+//   对比 calibration 时期 dense / RRF / 加权三种方案的真实结果；
+// - 生成质量：e2e 全链路的按类别通过率（多轮/拒答/总结/对比）；
+// - LLM 评判：离线判已存答案的忠实度/编造/拒答，可点按钮重跑。
+// ======================================================================
+const CATEGORY_LABELS = {
+  en_fact: ["英文事实", "en_fact"],
+  zh_fact: ["中文事实", "zh_fact"],
+  cross_lingual: ["跨语言", "cross_lingual"],
+  coreference: ["多轮指代", "coreference"],
+  compare_papers: ["论文对比", "compare_papers"],
+  group_report: ["组会提纲", "group_report"],
+  summary_paper: ["单篇总结", "summary_paper"],
+  refusal: ["拒答", "refusal"],
+  metadata: ["元数据", "metadata"],
+  edge: ["边界输入", "edge"],
+};
+
+const SERIES_COLORS = ["#4d9de0", "#3ecfae", "#f472b6", "#f59e42"];
+
+let evalReportLoadedOnce = false;
+let evalReportData = null;
+let reportMetric = "recall";
+
+function catLabel(cat) {
+  return CATEGORY_LABELS[cat] ? CATEGORY_LABELS[cat][0] : cat;
+}
+
+function fmtPct4(value) {
+  return value === null || value === undefined ? "—" : Math.round(value * 1000) / 10 + "%";
+}
+
+function fmtNum4(value) {
+  return value === null || value === undefined ? "—" : (Math.round(value * 1000) / 1000).toFixed(3);
+}
+
+// 分组柱状图：groups = [{cat, label, bars: [{value, series}]}]，value 0~1。
+function renderBarChart(container, groups, seriesLabels, fmt) {
+  if (!groups.length) {
+    container.innerHTML = '<div class="hint">没有可展示的数据。</div>';
+    return;
+  }
+  const legend = seriesLabels
+    .map((label, i) => `<span class="legend-chip" style="--c:${SERIES_COLORS[i % SERIES_COLORS.length]}">${escapeHtml(label)}</span>`)
+    .join("");
+  const barHeightPct = (v) => Math.max(2, Math.round(v * 100)) + "%";
+  const body = groups
+    .map((group) => {
+      const bars = group.bars
+        .map(
+          (bar, i) =>
+            bar.value === null || bar.value === undefined
+              ? `<div class="chart-bar" style="--c:#b9b2a0; height:4px; opacity:.45"><span class="bar-val">—</span></div>`
+              : `<div class="chart-bar" style="--c:${SERIES_COLORS[(bar.series ?? i) % SERIES_COLORS.length]}; height:${barHeightPct(bar.value)}"><span class="bar-val">${fmt(bar.value)}</span></div>`,
+        )
+        .join("");
+      return `<div class="chart-group">${bars}</div>`;
+    })
+    .join("");
+  const cats = groups
+    .map(
+      (group) =>
+        `<div class="chart-cat">${escapeHtml(group.label)}<span class="cat-sub">${escapeHtml(group.cat)}</span></div>`,
+    )
+    .join("");
+  container.innerHTML = `<div class="chart-legend">${legend}</div><div class="chart-body">${body}</div><div class="chart-cats">${cats}</div>`;
+}
+
+async function loadEvalReport() {
+  const kpisEl = document.getElementById("reportKpis");
+  kpisEl.innerHTML = '<div class="hint">加载中…</div>';
+  try {
+    const response = await fetch(`${apiBase}/admin/eval-report`, { headers: headers() });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(errorMessage(data, "加载失败"));
+    }
+    evalReportData = data;
+    evalReportLoadedOnce = true;
+    renderEvalReport(data);
+  } catch (error) {
+    kpisEl.innerHTML = "";
+    document.getElementById("retrievalChart").innerHTML = `<div class="hint">加载失败：${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function renderEvalReport(data) {
+  const meta = data.meta || {};
+
+  const rerank = meta.rerank_model ? escapeHtml(meta.rerank_model) : "无重排";
+  const e2eInfo = data.e2e;
+  document.getElementById("reportKpis").innerHTML = [
+    statBoxHtml(`${meta.set_size ?? "—"}+${meta.special_size ?? 0}`, "测试集 主+专项"),
+    statBoxHtml(`${meta.papers ?? "—"} 篇`, "语料规模"),
+    statBoxHtml(escapeHtml(String(meta.embeddings_model || "—")), `检索配置 · ${rerank}`),
+    statBoxHtml(escapeHtml(String(meta.model || "—")), "对话模型"),
+    statBoxHtml(e2eInfo ? fmtStamp(e2eInfo.finished_at) : "—", "上次 e2e 评测"),
+  ].join("");
+
+  // ---- 检索质量：类别 × 方案，指标可切换 ----
+  const variants = (data.retrieval && data.retrieval.variants) || [];
+  const catSet = new Set();
+  variants.forEach((v) => Object.keys(v.by_category || {}).forEach((c) => catSet.add(c)));
+  // 固定顺序展示，没法识别的类别排在后面
+  const order = ["en_fact", "zh_fact", "cross_lingual", "coreference"];
+  const cats = [...order.filter((c) => catSet.has(c)), ...[...catSet].filter((c) => !order.includes(c)).sort()];
+  const groups = cats.map((cat) => ({
+    cat,
+    label: catLabel(cat),
+    bars: variants.map((v, i) => ({
+      value: (v.by_category[cat] || {})[reportMetric],
+      series: i,
+    })),
+  }));
+  renderBarChart(
+    document.getElementById("retrievalChart"),
+    groups,
+    variants.map((v) => `${v.label}（${fmtStamp(v.finished_at)}）`),
+    reportMetric === "mrr" ? fmtNum4 : fmtPct4,
+  );
+  const overall = variants.map((v) => `${escapeHtml(v.label)} 总体 ${reportMetric === "mrr" ? fmtNum4(v.overall && v.overall.mrr) : fmtPct4(v.overall && v.overall.recall)}`).join(" · ");
+  document.getElementById("retrievalNote").innerHTML =
+    `只有带期望文献的类别参与检索指标（多轮题检索模式跳过、无期望块类别不适用）。` +
+    `口径：Recall@5＝期望文献进入 top-5（宽）；MRR＝期望块的排名倒数均值（严）。` +
+    `总体：${overall}。方案名与时间取自 data/eval 结果文件名。`;
+
+  // ---- 生成质量：e2e 按类别通过率 ----
+  if (e2eInfo) {
+    const e2eGroups = Object.keys(e2eInfo.by_category || {}).map((cat) => ({
+      cat,
+      label: catLabel(cat),
+      bars: [{ value: e2eInfo.by_category[cat].pass_rate, series: 1 }],
+    }));
+    renderBarChart(
+      document.getElementById("e2eChart"),
+      e2eGroups,
+      [`通过率（${e2eInfo.total} 条）`],
+      fmtPct4,
+    );
+    document.getElementById("e2eNote").innerHTML =
+      `总体通过率 ${fmtPct4(e2eInfo.pass_rate)} · 意图准确率 ${fmtPct4(e2eInfo.intent_accuracy)} · 中位延迟 ${e2eInfo.median_latency_ms ?? "—"} ms${e2eInfo.total < 100 ? `（抽样 ${e2eInfo.total} 条，非全量）` : ""}。判分：关键事实词覆盖 + 该拒答不硬凑 + 意图选对。`;
+  } else {
+    document.getElementById("e2eChart").innerHTML = '<div class="hint">还没有 e2e 结果。</div>';
+    document.getElementById("e2eNote").textContent = "";
+  }
+
+  renderJudgeBlock(data.judge);
+}
+
+// ---- LLM 评判区块 ----
+let judgePolling = null;
+
+function renderJudgeBlock(judge) {
+  const block = document.getElementById("judgeBlock");
+  const btn = document.getElementById("runJudge");
+  if (judgePolling) {
+    return; // 轮询中，renderJudgeBlock 会在完成后被调用
+  }
+  btn.style.display = "";
+  if (!judge) {
+    block.innerHTML = '<div class="hint">还没有评判结果，点「运行评判」对最近一次 e2e 的已存回答离线打分。</div>';
+    return;
+  }
+  const cats = Object.keys(judge.by_category || {}).sort();
+  const groups = cats.map((cat) => ({
+    cat,
+    label: catLabel(cat),
+    bars: [{ value: judge.by_category[cat].ok_rate, series: 1 }],
+  }));
+  block.innerHTML = `
+    <div class="judge-head">
+      <div class="judge-big"><div class="stat-num">${fmtPct4(judge.ok_rate)}</div><div class="stat-label">总体通过（${judge.total} 条）</div></div>
+      <div>
+        <div class="stat-num">${judge.fabricated}</div>
+        <div class="stat-label">编造条数（与参考答案矛盾或凭空捏造关键信息）</div>
+      </div>
+      <div class="hint">来源 ${escapeHtml(judge.file || "—")} · 判分模型 ${escapeHtml(judge.judge_model || "—")} · ${fmtStamp(judge.finished_at)}</div>
+    </div>`;
+  const chartWrap = document.createElement("div");
+  block.appendChild(chartWrap);
+  renderBarChart(chartWrap, groups, ["判为 ok（忠实 / 恰当拒答）"], fmtPct4);
+}
+
+async function runJudgeTask(limit) {
+  const btn = document.getElementById("runJudge");
+  btn.disabled = true;
+  try {
+    const response = await fetch(`${apiBase}/admin/judge`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify(limit ? { limit } : {}),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(errorMessage(data, "提交失败"));
+    }
+    const taskId = data.task_id;
+    btn.textContent = "评判中…";
+    judgePolling = setInterval(async () => {
+      try {
+        const statusResponse = await fetch(`${apiBase}/admin/judge/${taskId}`, { headers: headers() });
+        const status = await statusResponse.json();
+        if (status.total) {
+          btn.textContent = `评判中 ${status.done}/${status.total}`;
+        }
+        if (status.status === "done" || status.status === "error") {
+          clearInterval(judgePolling);
+          judgePolling = null;
+          btn.disabled = false;
+          btn.textContent = "重新评判";
+          if (status.status === "error") {
+            document.getElementById("judgeBlock").innerHTML = `<div class="hint">评判失败：${escapeHtml(status.error || "未知错误")}</div>`;
+          } else {
+            loadEvalReport();
+          }
+        }
+      } catch {
+        // 单次轮询失败不终止：下一轮再试
+      }
+    }, 3000);
+  } catch (error) {
+    btn.disabled = false;
+    document.getElementById("judgeBlock").innerHTML = `<div class="hint">提交失败：${escapeHtml(error.message)}</div>`;
+  }
+}
+
+document.getElementById("runJudge").addEventListener("click", () => runJudgeTask());
+document.getElementById("metricRecall").addEventListener("click", () => {
+  reportMetric = "recall";
+  document.getElementById("metricRecall").classList.add("primary");
+  document.getElementById("metricMrr").classList.remove("primary");
+  if (evalReportData) renderEvalReport(evalReportData);
+});
+document.getElementById("metricMrr").addEventListener("click", () => {
+  reportMetric = "mrr";
+  document.getElementById("metricMrr").classList.add("primary");
+  document.getElementById("metricRecall").classList.remove("primary");
+  if (evalReportData) renderEvalReport(evalReportData);
+});
+
+// ======================================================================
+// 观测页：意图成本（Langfuse）+ 评估趋势（本地结果文件）+ 阈值扫描。
+// ======================================================================
+let observeLoadedOnce = false;
+
+async function loadObserve() {
+  const kpisEl = document.getElementById("observeKpis");
+  kpisEl.innerHTML = '<div class="hint">加载中…</div>';
+  try {
+    const response = await fetch(`${apiBase}/admin/observe`, { headers: headers() });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(errorMessage(data, "加载失败"));
+    }
+    observeLoadedOnce = true;
+    renderObserve(data);
+  } catch (error) {
+    kpisEl.innerHTML = "";
+    document.getElementById("intentBars").innerHTML = `<div class="hint">加载失败：${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function fmtTokens(n) {
+  return n >= 10000 ? (Math.round(n / 100) / 10) + "k" : String(n);
+}
+
+function renderIntentCost(cost) {
+  const kpisEl = document.getElementById("observeKpis");
+  const barsEl = document.getElementById("intentBars");
+  const noteEl = document.getElementById("intentNote");
+  if (!cost || cost.error) {
+    kpisEl.innerHTML = "";
+    barsEl.innerHTML = `<div class="hint">${cost ? escapeHtml(cost.error) : "暂无数据。"}</div>`;
+    noteEl.textContent = "";
+    return;
+  }
+  const rows = cost.by_intent || [];
+  const colors = ["#f472b6", "#4d9de0", "#f59e42", "#3ecfae"];
+  const topRow = rows[0];
+  kpisEl.innerHTML = [
+    statBoxHtml(
+      topRow ? `${escapeHtml(topRow.intent)}` : "—",
+      topRow
+        ? `最贵意图 · 占 ${fmtPct4(topRow.share)} · 均 ${fmtTokens(Math.round(topRow.tokens / Math.max(1, topRow.llm_calls)))} token`
+        : "最贵意图",
+    ),
+    statBoxHtml(fmtTokens(cost.total_tokens || 0), "总 token（近 7 天）"),
+    statBoxHtml(String(cost.total_llm_calls ?? "—"), "LLM 调用条数"),
+    statBoxHtml(fmtStamp(cost.fetched_at), "本次抓取"),
+  ].join("");
+  const max = rows.length ? rows[0].tokens : 0;
+  barsEl.innerHTML = rows
+    .map(
+      (row, i) => `<div class="hbar-row">
+        <span class="hbar-label">${escapeHtml(row.intent)}</span>
+        <span class="hbar-track"><span class="hbar-fill" style="--c:${colors[i % colors.length]}; width:${max ? Math.max(1, Math.round((row.tokens / max) * 100)) : 1}%"></span></span>
+        <span class="hbar-val">${fmtPct4(row.share)} · ${row.tokens} token · ${row.llm_calls} 条</span>
+      </div>`,
+    )
+    .join("");
+  const tagged = rows.filter((r) => r.intent !== "未标注").length;
+  noteEl.textContent =
+    "意图来自请求时打到 trace 上的 intent:* 标签；「未标注」是标签上线前的历史 trace。每次问答含多次 LLM 调用（意图识别、检索改写、生成），条数按 generation 记。";
+}
+
+// 通用 SVG 折线图：series = [{label, color, dashed, points:[{x, y, text?}]}]
+// x/y 都是 0~1 归一化坐标，xDomain/yDomain 决定映射，markers 画方块点。
+function renderSvgLineChart(container, opts) {
+  const W = 960, H = 280, L = 52, R = 18, T = 16, B = 40;
+  const px = (x) => L + x * (W - L - R);
+  const py = (y) => T + (1 - y) * (H - T - B);
+  const [x0, x1] = opts.xDomain;
+  const sx = (v) => (v - x0) / (x1 - x0 || 1);
+  const sy = (v) => v;
+
+  let out = "";
+  // 横向网格 + y 轴刻度
+  for (const tick of [0, 0.25, 0.5, 0.75, 1]) {
+    out += `<line x1="${px(0)}" y1="${py(tick)}" x2="${px(1)}" y2="${py(tick)}" stroke="var(--border-soft)" stroke-width="2"/>`;
+    out += `<text x="${px(0) - 8}" y="${py(tick) + 4}" text-anchor="end">${tick}</text>`;
+  }
+  // x 轴刻度
+  for (const tick of opts.xTicks || []) {
+    out += `<line x1="${px(sx(tick.v))}" y1="${py(0)}" x2="${px(sx(tick.v))}" y2="${py(0) + 6}" stroke="var(--ink)" stroke-width="2"/>`;
+    out += `<text x="${px(sx(tick.v))}" y="${py(0) + 20}" text-anchor="middle">${escapeHtml(tick.label)}</text>`;
+  }
+  // 系列（只画线段：评测趋势 17 个点、阈值扫描 101 个点，加点标记
+  // 会密成一坨，看走势线段足够）
+  for (const s of opts.series) {
+    const pts = s.points.map((p) => `${px(sx(p.x))},${py(sy(p.y))}`).join(" ");
+    out += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="3" stroke-dasharray="${s.dashed ? "6 5" : "none"}" stroke-linejoin="round" shape-rendering="geometricPrecision"/>`;
+  }
+  // 标注竖线
+  if (opts.marker) {
+    const mx = px(sx(opts.marker.x));
+    out += `<line x1="${mx}" y1="${py(1)}" x2="${mx}" y2="${py(0)}" stroke="var(--ink)" stroke-width="2.5" stroke-dasharray="7 5"/>`;
+    out += `<text x="${mx + 8}" y="${py(1) + 14}" class="axis-label">${escapeHtml(opts.marker.label)}</text>`;
+  }
+  container.innerHTML = `<svg viewBox="0 0 ${W} ${H}" shape-rendering="crispEdges">${out}</svg>`;
+}
+
+function renderTrend(trend) {
+  const el = document.getElementById("trendChart");
+  const noteEl = document.getElementById("trendNote");
+  if (!trend || !trend.length) {
+    el.innerHTML = '<div class="hint">还没有历史评测结果。</div>';
+    noteEl.textContent = "";
+    return;
+  }
+  // 只画完整批次：早期调试时的半截文件（条数远小于同类最大批次）
+  // 会把趋势线砸出假深坑，按「条数 ≥ 同类最大批次的 60%」过滤。
+  const maxN = {};
+  for (const p of trend) {
+    maxN[p.kind] = Math.max(maxN[p.kind] || 0, p.n || 0);
+  }
+  const full = trend.filter((p) => (p.n || 0) >= (maxN[p.kind] || 0) * 0.6);
+  const times = full.map((p) => Date.parse(p.ts));
+  const x0 = Math.min(...times), x1 = Math.max(...times);
+  const toX = (ts) => (Date.parse(ts) - x0) / (x1 - x0 || 1);
+  const seriesDefs = [
+    { kind: "e2e", label: "e2e 通过率", color: "#3ecfae", field: "pass_rate" },
+    { kind: "retrieval", label: "检索 recall", color: "#4d9de0", field: "recall" },
+  ];
+  const series = [];
+  for (const def of seriesDefs) {
+    const pts = full
+      .filter((p) => p.kind === def.kind)
+      .map((p) => ({ x: toX(p.ts), y: p[def.field] }));
+    if (pts.length) {
+      series.push({ label: def.label, color: def.color, points: pts });
+    }
+  }
+  if (!series.length) {
+    el.innerHTML = '<div class="hint">还没有可画的数据。</div>';
+    noteEl.textContent = "";
+    return;
+  }
+  const e2ePts = full.filter((p) => p.kind === "e2e");
+  const retPts = full.filter((p) => p.kind === "retrieval");
+  const xTicks = [
+    { v: 0, label: fmtStamp(full[0].ts) },
+    { v: 1, label: fmtStamp(full[full.length - 1].ts) },
+  ];
+  renderSvgLineChart(el, { xDomain: [0, 1], series, xTicks });
+  noteEl.textContent =
+    `共 ${trend.length} 份结果文件，完整批次 ${full.length} 份入图（e2e/重评分 ${e2ePts.length}、检索 ${retPts.length}；` +
+    `条数不足最大批次 60% 的半截跑不画，避免假低谷）。细节看评测报告页的方案对比。`;
+}
+
+function renderSweep(sweep) {
+  const kpisEl = document.getElementById("sweepKpis");
+  const chartEl = document.getElementById("sweepChart");
+  const noteEl = document.getElementById("sweepNote");
+  if (!sweep) {
+    kpisEl.innerHTML = "";
+    chartEl.innerHTML = '<div class="hint">还没有扫描数据，跑 python scripts/run_threshold_sweep.py 生成。</div>';
+    noteEl.textContent = "";
+    return;
+  }
+  const chosen = sweep.chosen || {};
+  kpisEl.innerHTML = [
+    statBoxHtml((chosen.t ?? 0).toFixed(2), "选定阈值 t（Youden 最大）"),
+    statBoxHtml(fmtPct4(chosen.pass_rate), `语料内通过率（${sweep.answerable?.n ?? "—"} 题）`),
+    statBoxHtml(fmtPct4(chosen.reject_rate), `语料外拒答正确率（${sweep.refusal?.n ?? "—"} 题）`),
+    statBoxHtml(fmtNum4(chosen.youden), "Youden 指数"),
+  ].join("");
+
+  const curve = sweep.curve || [];
+  const series = [
+    { label: "可答题通过率", color: "#3ecfae", points: curve.map((p) => ({ x: p.t, y: p.pass_rate })) },
+    { label: "拒答正确率", color: "#f472b6", points: curve.map((p) => ({ x: p.t, y: p.reject_rate })) },
+    { label: "Youden", color: "#f59e42", dashed: true, points: curve.map((p) => ({ x: p.t, y: Math.max(0, p.youden) })) },
+  ];
+  renderSvgLineChart(chartEl, {
+    xDomain: [0, 1],
+    series,
+    xTicks: [{ v: 0, label: "0" }, { v: 0.25, label: "0.25" }, { v: 0.5, label: "0.5" }, { v: 0.75, label: "0.75" }, { v: 1, label: "1.0" }],
+    marker: { x: chosen.t ?? 0, label: `选定 t=${(chosen.t ?? 0).toFixed(2)}` },
+  });
+
+  const cats = sweep.by_category || {};
+  const table = `<table class="mini-table"><thead><tr>
+      <th>类别</th><th>条数</th><th>min</th><th>p25</th><th>中位</th><th>p75</th><th>max</th>
+    </tr></thead><tbody>${Object.keys(cats)
+      .map(
+        (c) => `<tr><td>${escapeHtml(catLabel(c))}</td><td>${cats[c].n ?? 0}</td>` +
+          ["min", "p25", "median", "p75", "max"].map((k) => `<td>${cats[c][k] ?? "—"}</td>`).join("") + "</tr>",
+      )
+      .join("")}</tbody></table>`;
+  noteEl.innerHTML =
+    `重排模型 ${escapeHtml(sweep.rerank_model || "—")}，top-${sweep.top_k ?? 5} 的最高重排分。` +
+    `线上按意图分档门槛（事实类 0.8 / 总结类 0.35）即取自这套分布：总结类分数散布宽，必须给低门槛才不误拒。` +
+    `扫描于 ${fmtStamp(sweep.generated_at)}。` + table;
+}
+
+function renderObserve(data) {
+  renderIntentCost(data.intent_cost);
+  renderTrend(data.eval_trend);
+  renderSweep(data.threshold_sweep);
+}
+
+document.getElementById("reloadObserve").addEventListener("click", loadObserve);
+
+// ======================================================================
+// 会话管理。
+//
+// thread_id 是服务端记忆的钥匙；会话列表只是把这个钥匙拟人化成
+// 「会话」，让用户不用手填 ID。列表与每段对话的显示转录都存
+// localStorage——服务端记忆在 checkpointer / conversation_store 里，
+// 清浏览器缓存不影响服务端，反之切换会话也不动服务端。
+// ======================================================================
+const SESSIONS_KEY = "feishuSessions";
+const TRANSCRIPTS_KEY = "feishuTranscripts";
+const GREETING_HTML =
+  '<div class="message assistant">你好，可以问我文献、PDF、PPT、组会汇报提纲相关问题。</div>';
+
+const sessionListEl = document.getElementById("sessionList");
+const newSessionEl = document.getElementById("newSession");
+
+let sessions = [];
+let transcripts = {};
+let currentSessionId = null;
+
+function loadJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function persistSessions() {
+  try {
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+    localStorage.setItem(TRANSCRIPTS_KEY, JSON.stringify(transcripts));
+  } catch {
+    // 存储超限之类的问题不影响对话本身，静默即可。
+  }
+}
+
+function makeSessionId() {
+  return "chat-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+}
+
+function captureTranscript() {
+  // 把当前消息区快照成转录（跳过瞬态的 status-line）。
+  return [...messagesEl.children]
+    .filter((el) => !el.classList.contains("status-line"))
+    .map((el) => ({
+      role: el.classList.contains("user") ? "user" : "assistant",
+      html: el.innerHTML,
+    }));
+}
+
+// 面板状态（工具/解释/来源/原始返回）与会话一起持久化——
+// 切换会话回来时，徽标点开依然有卡可对。
+function capturePanels() {
+  return {
+    tools: toolTraceEl.innerHTML,
+    explain: retrievalExplainEl.innerHTML,
+    sources: sourceTraceEl.innerHTML,
+    noteDisplay: sourceHistoryNote.style.display || "none",
+    noteText: sourceHistoryNote.textContent,
+    raw: rawTraceEl.textContent,
+  };
+}
+
+function restorePanels(panels) {
+  if (!panels) return;
+  toolTraceEl.innerHTML = panels.tools || "";
+  retrievalExplainEl.innerHTML = panels.explain || "";
+  sourceTraceEl.innerHTML = panels.sources || "";
+  sourceHistoryNote.style.display = panels.noteDisplay || "none";
+  sourceHistoryNote.textContent = panels.noteText || "";
+  rawTraceEl.textContent = panels.raw || "";
+}
+
+function saveCurrentTranscript() {
+  if (!currentSessionId) return;
+  const store = transcripts[currentSessionId];
+  const messages = captureTranscript();
+  // 面板只在「回答完成」的时机捕获（saveSessionPanels）。
+  // 这里若跟着捕获 DOM，会把切换间隙里的空面板存进去，覆盖真数据。
+  const panels = store && !Array.isArray(store) ? store.panels : undefined;
+  transcripts[currentSessionId] = { messages, panels };
+  autoNameSession();
+  persistSessions();
+}
+
+// 渲染流结束后立即存面板（面板不在 messagesEl 观察范围内）。
+function saveSessionPanels() {
+  if (!currentSessionId) return;
+  const entry = transcripts[currentSessionId];
+  const messages =
+    entry && !Array.isArray(entry) && entry.messages
+      ? entry.messages
+      : captureTranscript();
+  transcripts[currentSessionId] = { messages, panels: capturePanels() };
+  persistSessions();
+}
+
+// 首条提问自动命名会话：转录里第一条用户消息取前 18 个字。
+function autoNameSession() {
+  const session = sessions.find((item) => item.id === currentSessionId);
+  if (!session || session.name !== "新会话") return;
+  const store = transcripts[currentSessionId];
+  const messages = Array.isArray(store) ? store : store && store.messages;
+  const entry = (messages || []).find((item) => item.role === "user");
+  if (!entry) return;
+  const text = entry.html.replace(/<[^>]*>/g, "").trim();
+  if (text) {
+    session.name = text.slice(0, 18);
+    persistSessions();
+    renderSessionList();
+  }
+}
+
+// 流式渲染会高频改 DOM，防抖 800ms 落盘一次。
+let transcriptSaveTimer = null;
+new MutationObserver(() => {
+  clearTimeout(transcriptSaveTimer);
+  transcriptSaveTimer = setTimeout(saveCurrentTranscript, 800);
+}).observe(messagesEl, { childList: true, subtree: true, characterData: true });
+window.addEventListener("beforeunload", saveCurrentTranscript);
+
+function renderSessionList() {
+  sessionListEl.innerHTML = "";
+  sessions.forEach((session) => {
+    const item = document.createElement("div");
+    item.className = "session-item" + (session.id === currentSessionId ? " active" : "");
+
+    const name = document.createElement("div");
+    name.className = "session-name";
+    name.textContent = session.name;
+    name.title = session.id;
+
+    if (session.hasNew) {
+      const dot = document.createElement("span");
+      dot.className = "session-new";
+      dot.textContent = "✦";
+      name.appendChild(dot);
+    }
+
+    const del = document.createElement("button");
+    del.className = "session-del";
+    del.textContent = "✕";
+    del.title = "删除会话";
+    del.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteSession(session.id);
+    });
+
+    item.append(name, del);
+    item.addEventListener("click", () => switchSession(session.id));
+    sessionListEl.appendChild(item);
+  });
+}
+
+function resetTracePanels() {
+  toolTraceEl.innerHTML = '<div class="tool-item">暂无工具调用。</div>';
+  retrievalExplainEl.innerHTML = '<div class="explain-item">暂无检索解释。</div>';
+  sourceTraceEl.innerHTML = '<div class="source-item">暂无来源。</div>';
+  sourceHistoryNote.style.display = "none";
+  rawTraceEl.textContent = "暂无";
+}
+
+function restoreSession(sessionId) {
+  const store = transcripts[sessionId] || { messages: [] };
+  const messages = Array.isArray(store) ? store : store.messages || [];
+  const panels = Array.isArray(store) ? null : store.panels;
+  if (messages.length === 0) {
+    messagesEl.innerHTML = GREETING_HTML;
+  } else {
+    messagesEl.innerHTML = messages
+      .map(
+        (entry) =>
+          `<div class="message ${entry.role}">${entry.html}</div>`
+      )
+      .join("");
+  }
+  restorePanels(panels);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function switchSession(sessionId) {
+  if (sessionId === currentSessionId) return;
+  saveCurrentTranscript();
+  currentSessionId = sessionId;
+  threadIdEl.value = sessionId;
+  localStorage.setItem("feishuThreadId", sessionId);
+  resetTracePanels();
+  restoreSession(sessionId);
+  const activeSession = sessions.find((item) => item.id === sessionId);
+  if (activeSession) activeSession.hasNew = false;
+  renderSessionList();
+}
+
+function createSession(name) {
+  const session = {
+    id: makeSessionId(),
+    name: name || "新会话",
+    createdAt: Date.now(),
+  };
+  sessions.unshift(session);
+  return session;
+}
+
+function newSession() {
+  saveCurrentTranscript();
+  const session = createSession();
+  currentSessionId = session.id;
+  threadIdEl.value = session.id;
+  localStorage.setItem("feishuThreadId", session.id);
+  messagesEl.innerHTML = GREETING_HTML;
+  renderSessionList();
+  resetTracePanels();
+  questionEl.focus();
+}
+
+function deleteSession(sessionId) {
+  if (!confirm("删除这个会话？将同时清空它在服务端的全部记忆。")) return;
+  fetch(`${apiBase}/admin/clear-thread`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ thread_id: sessionId }),
+  }).catch(() => {});
+
+  sessions = sessions.filter((session) => session.id !== sessionId);
+  delete transcripts[sessionId];
+  persistSessions();
+
+  if (sessionId === currentSessionId) {
+    if (sessions.length > 0) {
+      switchSession(sessions[0].id);
+    } else {
+      newSession();
+    }
+  } else {
+    renderSessionList();
+  }
+}
+
+// 首条提问自动命名：见 saveCurrentTranscript 里的 autoNameSession()。
+
+// 把「别的会话里完成的一轮问答」写进该会话的存储，并给列表项打 ✦ 提示。
+// answerHtml 已经是渲染好的 HTML（保持与转录同格式）。
+function routeResultToSession(sessionId, question, answer, result) {
+  const existing = transcripts[sessionId];
+  const messages =
+    existing && !Array.isArray(existing) && existing.messages
+      ? existing.messages
+      : [];
+  if (answer) {
+    messages.push({
+      role: "assistant",
+      html: renderMarkdown(answer).innerHTML,
+    });
+  }
+  // result 存在才更新面板（正常完成）；错误路由保留已有面板，
+  // 避免把占位符覆盖到之前攒好的来源上。
+  const panels = result
+    ? buildPanelsFromResult({
+        tools: (result && result.tools) || [],
+        sources: (result && result.sources) || [],
+        intent: (result && result.intent) || "",
+        mode: (result && result.mode) || "",
+        rewritten_query: (result && result.rewritten_query) || "",
+        latency_ms: (result && result.latency_ms) || 0,
+      })
+    : existing && !Array.isArray(existing)
+      ? existing.panels
+      : undefined;
+  transcripts[sessionId] = { messages, panels };
+  const session = sessions.find((item) => item.id === sessionId);
+  if (session) session.hasNew = true;
+  persistSessions();
+  renderSessionList();
+}
+
+newSessionEl.addEventListener("click", newSession);
+
+// 会话初始化：优先用已存列表；全新浏览器则从旧 thread_id 配置迁移。
+sessions = loadJson(SESSIONS_KEY, []);
+transcripts = loadJson(TRANSCRIPTS_KEY, {});
+if (sessions.length === 0) {
+  const legacyId =
+    localStorage.getItem("feishuThreadId") || threadIdEl.value.trim() || "feishu-web-user-1";
+  sessions = [{ id: legacyId, name: "新会话", createdAt: Date.now() }];
+  persistSessions();
+}
+currentSessionId = sessions[0].id;
+threadIdEl.value = currentSessionId;
+restoreSession(currentSessionId);
+renderSessionList();
+
+    checkHealth();
+    loadLogs();
+  </script>
+</body>
+</html>

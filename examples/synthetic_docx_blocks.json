@@ -1,0 +1,20 @@
+[
+  {
+    "block_id": "heading-1",
+    "heading1": {
+      "elements": [{"text_run": {"content": "合成项目周报"}}]
+    }
+  },
+  {
+    "block_id": "paragraph-1",
+    "text": {
+      "elements": [{"text_run": {"content": "本周完成飞书文档自动同步与增量检索。"}}]
+    }
+  },
+  {
+    "block_id": "bullet-1",
+    "bullet": {
+      "elements": [{"text_run": {"content": "测试关键词：blue-orchid-2026"}}]
+    }
+  }
+]

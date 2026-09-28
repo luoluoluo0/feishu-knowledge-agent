@@ -1,0 +1,9 @@
+services:
+  milvus-minio:
+    # GitHub Actions checkout 目录归 root；Chainguard MinIO 默认以 65532
+    # 运行，不能写 bind mount。CI 使用 Docker 管理的临时卷，生产配置不变。
+    volumes:
+      - milvus_minio_ci:/data
+
+volumes:
+  milvus_minio_ci:

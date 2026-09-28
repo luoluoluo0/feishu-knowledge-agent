@@ -1,0 +1,96 @@
+# ===== 密钥 =====
+.env
+.env.local
+*.key
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.pytest_tmp*/
+
+# ===== 原始资料（体积大，不入库）=====
+# data/raw 下 548MB 的 PDF/PPT 二进制留在本地磁盘，
+# 需要重建知识库时它们还在，不必进 git 历史。
+data/raw/papers/
+data/raw/ppts/
+data/raw/figures/
+
+# ===== 生成物（scripts/ 可重建）=====
+data/processed/chunks.jsonl
+data/metadata/literature_index_auto.csv
+data/metadata/attachment_debug.csv
+data/metadata/*.gbk.bak.csv
+
+# MinerU 解析与切块的产物。加起来 170MB 左右，脚本能重建，
+# 重建只需要本地已有的 PDF，不必占 git 历史。
+data/processed/chunks_v2.jsonl
+data/processed/parents.json
+data/processed/mineru/
+data/processed/mineru_json/
+data/processed/mineru_blocks/
+data/processed/mineru_test/
+data/processed/mineru_failed.txt
+data/processed/figures/
+data/processed/figures_test/
+data/processed/pdf_text_audit.csv
+
+# ===== 本地 Milvus 数据卷（496MB）=====
+# docker-compose.milvus.yml 挂载的 etcd/minio/milvus 数据。
+# 这是运行时状态，不是源码；重建靠 scripts/rebuild_milvus_bm25.py。
+milvus_data/
+
+# ===== 评测跑出来的结果 =====
+# 测试集本身（eval_set.jsonl / eval_special.jsonl）要进库——
+# 它是精心生成的资产，重跑要花模型调用。结果文件不进。
+data/eval/result_*.jsonl
+data/eval/*.bak
+
+# ===== 一次性验证脚本 =====
+# 验证「能不能给已有集合补 BM25」，结论已经进了 dev-notes。
+_feasibility.py
+
+# ===== 运行时数据 =====
+# agent_logs.db / agent_checkpoints.db 是跑出来的，不是源码
+data/runtime/
+
+# ===== 开源隐私边界 =====
+# 用户文档、评测问答、微调样本和本地开发记录默认一律不进入公开仓库。
+# 可公开的合成样例统一放 examples/。
+data/eval/
+data/raw/feishu_notes/
+data/metadata/*.csv
+data/processed/*.jsonl
+data/processed/*.csv
+evals/
+finetune/data/
+dev-notes/
+
+# ===== 向量库存储 =====
+qdrant_storage/
+chroma/
+
+# ===== 临时与日志 =====
+.tmp_pip/
+*.log
+*.sqlite3-journal
+*.db-shm
+*.db-wal
+
+# ===== 编辑器 / 系统 =====
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== ZCode 本地工作目录 =====
+.zcode/
+.zcodeignore
+langfuse-credentials.txt
+
+# LLM 评判的逐条结果（同 result_*，跑完的产物不入库）
+data/eval/judged_*.jsonl

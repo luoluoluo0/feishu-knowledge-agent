@@ -1,0 +1,18 @@
+[tool.pytest.ini_options]
+markers = [
+  "integration: requires external services such as Milvus or Feishu",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [
+  "data",
+  "evals",
+  "finetune",
+]
+
+[tool.ruff.lint]
+# Keep CI focused on correctness for the first public release; style cleanup can
+# be expanded incrementally without blocking unrelated contributions.
+select = ["E9", "F63", "F7", "F82"]

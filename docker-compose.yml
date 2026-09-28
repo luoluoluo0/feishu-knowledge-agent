@@ -1,0 +1,96 @@
+include:
+  - path: docker-compose.langfuse.yml
+
+x-agent-common: &agent-common
+  build: .
+  env_file: .env
+  restart: unless-stopped
+  environment:
+    MILVUS_URI: http://standalone:19530
+    FEISHU_SYNC_DB_PATH: /app/data/runtime/feishu_sync.db
+    FEISHU_SYNC_DOWNLOAD_DIR: /app/data/runtime/feishu_sync/files
+  volumes:
+    - runtime_data:/app/data/runtime
+    - processed_data:/app/data/processed
+  depends_on:
+    standalone:
+      condition: service_healthy
+
+services:
+  api:
+    <<: *agent-common
+    ports:
+      - "8030:8030"
+
+  sync-worker:
+    <<: *agent-common
+    command: ["python", "-m", "app.feishu_sync.cli", "watch"]
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.18
+    restart: unless-stopped
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: >-
+      etcd --advertise-client-urls=http://etcd:2379
+      --listen-client-urls=http://0.0.0.0:2379 --data-dir=/etcd
+    volumes:
+      - etcd_data:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  milvus-minio:
+    image: cgr.dev/chainguard/minio@sha256:22bf0ad174612a0106dfbbb95818f307525dd32c5a6ec119ecd7273815abe456
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MILVUS_MINIO_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MILVUS_MINIO_PASSWORD:-local-development-only}
+    command: ["server", "/data", "--console-address", ":9001"]
+    volumes:
+      - milvus_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  standalone:
+    image: milvusdb/milvus:v2.6.24
+    restart: unless-stopped
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: milvus-minio:9000
+      MINIO_ACCESS_KEY: ${MILVUS_MINIO_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MILVUS_MINIO_PASSWORD:-local-development-only}
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      milvus-minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      start_period: 45s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  runtime_data:
+  processed_data:
+  etcd_data:
+  milvus_minio_data:
+  milvus_data:
