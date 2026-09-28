@@ -1217,13 +1217,14 @@ def admin_feishu_sync_run():
     )
 
     def task() -> None:
+        from app.feishu_sync.cli import _drift_checker
         from app.feishu_sync.service import ReconcileService
         from app.feishu_sync.settings import FeishuSyncSettings
 
         service = None
         try:
             sync_settings = FeishuSyncSettings.from_app_settings()
-            service = ReconcileService(sync_settings)
+            service = ReconcileService(sync_settings, drift_checker=_drift_checker())
             result = service.reconcile().as_dict()
             FEISHU_SYNC_TASK.update(status="completed", result=result)
         except Exception as exc:

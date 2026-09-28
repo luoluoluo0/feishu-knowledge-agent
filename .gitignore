@@ -1,6 +1,7 @@
 # ===== 密钥 =====
 .env
 .env.local
+.env.bak*
 *.key
 
 # ===== Python =====

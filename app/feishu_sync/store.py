@@ -546,6 +546,30 @@ class SyncStore:
             self.bump_corpus_revision(commit=False)
         self.connection.commit()
 
+    def active_documents(self) -> list[dict[str, Any]]:
+        """所有 sync_status=active 的文档，供漂移校验比对 Milvus 实际行数。"""
+        rows = self.connection.execute(
+            "SELECT source_token, item_id, name, metadata_hash FROM documents "
+            "WHERE sync_status='active'"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def clear_content_hash(self, source_token: str) -> bool:
+        """清空 content_hash，使 Worker 的「内容未变」短路失效。
+
+        只对仍保有哈希的行生效并返回 True；重复调用（任务还在排队时
+        下一轮对账再校验）不会再次生效，避免修复动作重复计数。
+        """
+        cursor = self.connection.execute(
+            "UPDATE documents SET content_hash='' WHERE source_token=? "
+            "AND content_hash!=''",
+            (source_token,),
+        )
+        changed = bool(cursor.rowcount)
+        if changed:
+            self.connection.commit()
+        return changed
+
     def bump_corpus_revision(self, *, commit: bool = True) -> int:
         self.connection.execute(
             "UPDATE corpus_state SET revision=revision+1, updated_at=? WHERE singleton=1",

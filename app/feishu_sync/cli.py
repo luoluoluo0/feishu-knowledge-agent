@@ -20,8 +20,16 @@ def _settings() -> FeishuSyncSettings:
     return settings
 
 
+def _drift_checker():
+    """对账时顺带校验台账与 Milvus 是否脱节（向量库被重建/误删的场景）。"""
+
+    from .ingestion import IngestionService
+
+    return IngestionService().drifted_items
+
+
 def run_sync_once(settings: FeishuSyncSettings) -> dict:
-    service = ReconcileService(settings)
+    service = ReconcileService(settings, drift_checker=_drift_checker())
     try:
         result = service.reconcile().as_dict()
     finally:

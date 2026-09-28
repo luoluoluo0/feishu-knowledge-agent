@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable, Iterable
 
 from .client import FeishuClient
 from .settings import FeishuSyncSettings
 from .store import SyncStore, metadata_hash
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -29,11 +33,13 @@ class ReconcileService:
         *,
         client: FeishuClient | None = None,
         store: SyncStore | None = None,
+        drift_checker: Callable[[Iterable[str]], set[str]] | None = None,
     ) -> None:
         settings.validate()
         self.settings = settings
         self.client = client or FeishuClient(settings.app_id, settings.app_secret)
         self.store = store or SyncStore(settings.db_path)
+        self.drift_checker = drift_checker
         self._owns_store = store is None
 
     def close(self) -> None:
@@ -59,6 +65,7 @@ class ReconcileService:
                     self.store.set_source_status(
                         self.client.tenant_key, root_token, "healthy"
                     )
+            self._verify_corpus_drift(result)
             self.store.finish_run(run_id, result.as_dict(), "; ".join(errors))
             return result
         except Exception as exc:
@@ -104,3 +111,43 @@ class ReconcileService:
         )
         result.missing += missing
         result.jobs_created += jobs
+
+    def _verify_corpus_drift(self, result: ReconcileResult) -> None:
+        """校验台账认为「已同步」的文档，在 Milvus 里行数是否还对得上。
+
+        排队层和 Worker 层的两道 content 短路都只看台账自己的记录，
+        发现不了向量库被整体重建或误删。这里按 item_id 比对本地镜像
+        与 Milvus 的实际行数，不符就清空 content_hash 并复活 upsert
+        任务，让 Worker 走完整重灌。Milvus 不可达时跳过本轮校验，
+        不影响正常扫描。
+        """
+
+        if self.drift_checker is None:
+            return
+        documents = self.store.active_documents()
+        if not documents:
+            return
+        try:
+            drifted = self.drift_checker(
+                str(row["item_id"]) for row in documents
+            )
+        except Exception as exc:
+            logger.warning("Milvus 漂移校验失败，本轮跳过：%s", exc)
+            return
+        for row in documents:
+            if str(row["item_id"]) not in drifted:
+                continue
+            if not self.store.clear_content_hash(str(row["source_token"])):
+                continue
+            created = self.store.enqueue_job(
+                str(row["source_token"]),
+                "upsert",
+                str(row["metadata_hash"]),
+                revive_existing=True,
+            )
+            result.changed += 1
+            result.jobs_created += int(created)
+            logger.info(
+                "检测到 %s 的 Milvus 行数与台账脱节，已排队重灌",
+                row.get("name") or row["item_id"],
+            )

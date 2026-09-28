@@ -5,7 +5,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Iterable
 
 from filelock import FileLock
 
@@ -104,6 +104,16 @@ def _atomic_jsonl(path: Path, rows: list[dict]) -> None:
         for row in rows:
             file.write(json.dumps(row, ensure_ascii=False) + "\n")
     temporary.replace(path)
+
+
+def local_child_counts() -> dict[str, int]:
+    """统计本地镜像里各 item_id 的子块行数，作为 Milvus 侧的期望值。"""
+    counts: dict[str, int] = {}
+    for row in _load_children():
+        item_id = str(row.get("item_id") or "")
+        if item_id:
+            counts[item_id] = counts.get(item_id, 0) + 1
+    return counts
 
 
 class IngestionService:
@@ -229,6 +239,25 @@ class IngestionService:
             return False
         path.unlink()
         return True
+
+    def drifted_items(self, item_ids: Iterable[str]) -> set[str]:
+        """比对本地镜像与 Milvus 的子块行数，返回对不上的 item_id。
+
+        台账的两道短路（metadata_hash / content_hash）只看自己的记录，
+        看不到向量库被整体重建或误删；这里用本地镜像行数当期望值，
+        逐个 item_id 数 Milvus 实际行数，发现脱节交给上层排队重灌。
+        """
+
+        expected = local_child_counts()
+        store = self.store_factory(self.settings)
+        store.ensure_collection()
+        drifted: set[str] = set()
+        for item_id in item_ids:
+            want = expected.get(item_id, 0)
+            got = self._count_item(store, item_id)
+            if got != want:
+                drifted.add(item_id)
+        return drifted
 
     @staticmethod
     def _count_item(store: Any, item_id: str) -> int:
