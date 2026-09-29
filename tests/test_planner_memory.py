@@ -37,7 +37,11 @@ class TestFormatHistoryBlock:
 
 
 def _build_prompt(history):
+    from types import SimpleNamespace
+
     agent = PlannerAgent.__new__(PlannerAgent)  # 不跑 __init__，避免建 LLM
+    # build_final_prompt 会读 settings 里的拼装瘦身配置，给最小命名空间
+    agent.settings = SimpleNamespace(planner_prompt_top_k_per_step=0)
     plan = PlanResult(task_type="compare_papers")
     return agent.build_final_prompt("再加上013", plan, [], history=history)
 

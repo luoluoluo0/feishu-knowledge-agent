@@ -17,22 +17,22 @@ def patch_preprocessing(monkeypatch, expected_config):
         pipeline_module, "build_run_config", lambda **_: expected_config
     )
     monkeypatch.setattr(pipeline_module, "load_history", lambda *a, **k: [])
+    # 预处理已合并为 understand_question（改写+意图一次调用），
+    # 返回 (RewriteResult, IntentResult) 二元组。
     monkeypatch.setattr(
         pipeline_module,
-        "rewrite_query",
-        lambda question, history, **k: SimpleNamespace(
-            original_question=question,
-            rewritten_query=question,
-            item_id="",
-            rewritten=False,
-            reason="测试跳过。",
-        ),
-    )
-    monkeypatch.setattr(
-        pipeline_module,
-        "classify_intent",
-        lambda question, **k: SimpleNamespace(
-            question=question, intent="simple_qa", reason="测试跳过。"
+        "understand_question",
+        lambda question, history, **k: (
+            SimpleNamespace(
+                original_question=question,
+                rewritten_query=question,
+                item_id="",
+                rewritten=False,
+                reason="测试跳过。",
+            ),
+            SimpleNamespace(
+                question=question, intent="simple_qa", reason="测试跳过。"
+            ),
         ),
     )
 

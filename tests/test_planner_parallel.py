@@ -3,10 +3,7 @@ from __future__ import annotations
 import dataclasses
 import time
 
-from langchain_openai import ChatOpenAI
-
 from app.config import get_settings
-from app.llm import build_llm
 from app.planner import PlanResult, PlanStep
 from app.planner_agent import PlannerAgent, _bind_output_cap
 
@@ -111,15 +108,29 @@ def test_parallel_steps_see_caller_contextvars():
 
 
 def test_output_cap_binds_when_positive():
-    llm = _bind_output_cap(build_llm(get_settings()), 1500)
+    """绑定行为用假 LLM 验证：真实 build_llm 需要 API Key，CI 环境没有。"""
 
-    assert getattr(llm, "kwargs", {}).get("max_tokens") == 1500
+    class BindFakeLlm:
+        def __init__(self):
+            self.kwargs = None
+
+        def bind(self, **kwargs):
+            self.kwargs = kwargs
+            return self
+
+    fake = BindFakeLlm()
+    bound = _bind_output_cap(fake, 1500)
+
+    assert bound is fake
+    assert fake.kwargs == {"max_tokens": 1500}
 
 
 def test_output_cap_noop_when_disabled():
-    llm = _bind_output_cap(build_llm(get_settings()), 0)
+    class FakeLlm:
+        pass
 
-    assert isinstance(llm, ChatOpenAI)
+    fake = FakeLlm()
+    assert _bind_output_cap(fake, 0) is fake
 
 
 def test_final_prompt_carries_concision_instruction():
