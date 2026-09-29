@@ -349,11 +349,20 @@ class PaperSearchTools:
         if intent:
             logger.info("rerank 门槛按意图分档：%s -> %.2f", intent, min_score)
 
-        # 查询缓存：相同问题（含 item_id/门槛/条数）直接复用上次检索产出，
-        # 省掉翻译→嵌入→检索→重排约 4 秒和全部 API 费用。
+        # 参考文献块按意图过滤。内容型意图下排除：重排对参考文献区打分
+        # 虚高（满屏"方法""研究"字样），实测它能把正文方法章节挤到第 3、
+        # 第 5 位，模型却拿它当主要证据。元数据类问题（"012 引用了哪些
+        # 文献"）参考文献块本身就是答案，保留；无意图（测试/脚本直调，
+        # 空串）保持旧行为不过滤，与门槛分档的回落策略一致。
+        include_reference = not intent or intent == "metadata_query"
+
+        # 查询缓存：相同问题（含 item_id/门槛/条数/是否含参考文献）直接
+        # 复用上次检索产出，省掉翻译→嵌入→检索→重排约 4 秒和全部 API 费用。
         cache_key = None
         if self.settings.query_cache_enabled:
-            cache_key = query_cache.make_key(query, item_id, min_score, top_k)
+            cache_key = query_cache.make_key(
+                query, item_id, min_score, top_k, include_reference=include_reference
+            )
             cached = query_cache.get(cache_key)
             if cached is not None:
                 logger.info("查询缓存命中：%s", query[:40])
@@ -366,6 +375,7 @@ class PaperSearchTools:
                 item_id=item_id,
                 expand_parents=self.settings.parent_expand_enabled,
                 min_score=min_score,
+                include_reference=include_reference,
             )
         except Exception as exc:
             return [], None, f"论文检索失败：{type(exc).__name__}：{str(exc)[:80]}"

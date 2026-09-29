@@ -60,7 +60,11 @@ def build_agent(monkeypatch, prepared, recorded):
             return SimpleNamespace(content="这是回答。")
 
     agent = planner_agent_module.PlannerAgent.__new__(planner_agent_module.PlannerAgent)
-    agent.settings = SimpleNamespace()
+    agent.settings = SimpleNamespace(
+        planner_max_parallel_steps=4,
+        planner_max_output_tokens=0,
+        planner_prompt_top_k_per_step=0,
+    )
     agent.planner = FakePlanner()
     agent.llm = FakeLlm()
     agent.tools = SimpleNamespace()
@@ -137,7 +141,11 @@ def test_planner_does_not_reprepare_when_given_prepared(monkeypatch):
     monkeypatch.setattr(planner_agent_module, "append_turn", lambda *a, **k: None)
 
     agent = planner_agent_module.PlannerAgent.__new__(planner_agent_module.PlannerAgent)
-    agent.settings = SimpleNamespace()
+    agent.settings = SimpleNamespace(
+        planner_max_parallel_steps=4,
+        planner_max_output_tokens=0,
+        planner_prompt_top_k_per_step=0,
+    )
     agent.planner = SimpleNamespace(
         plan=lambda question, config=None, history=None: PlanResult(
             task_type="simple_qa", steps=[], reason="test"

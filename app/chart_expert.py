@@ -20,6 +20,7 @@
 
 import json
 import logging
+import threading
 
 import requests
 
@@ -48,14 +49,18 @@ UNAVAILABLE_HINT = (
 )
 
 # 同题缓存：键=问题原文。命中即瞬时返回，专治陷阱题的工具调用螺旋。
+# 工具调用在 langgraph 的线程池里并行执行，dict 的 iter+pop 序列在
+# 并发下可能撞上「dictionary changed size during iteration」，加锁。
 _CACHE_MAX = 128
 _answer_cache: dict[str, str] = {}
+_answer_cache_lock = threading.Lock()
 
 
 def _cache_put(key: str, value: str) -> str:
-    if len(_answer_cache) >= _CACHE_MAX:
-        _answer_cache.pop(next(iter(_answer_cache)))
-    _answer_cache[key] = value
+    with _answer_cache_lock:
+        if len(_answer_cache) >= _CACHE_MAX:
+            _answer_cache.pop(next(iter(_answer_cache)))
+        _answer_cache[key] = value
     return value
 
 

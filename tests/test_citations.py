@@ -170,10 +170,17 @@ def test_prompts_document_citation_format():
     assert "飞书知识库" in INTENT_SYSTEM_PROMPT
     assert "飞书知识库" in PLANNER_SYSTEM_PROMPT
 
+    from types import SimpleNamespace
+
     from app.planner import PlanResult
 
+    # build_final_prompt 现在会读 settings 里的拼装瘦身配置，
+    # 传一个最小命名空间即可，不拖真实配置。
     prompt = PlannerAgent.build_final_prompt(
-        object(), "测试问题", PlanResult(task_type="普通问答"), []
+        SimpleNamespace(settings=SimpleNamespace(planner_prompt_top_k_per_step=0)),
+        "测试问题",
+        PlanResult(task_type="普通问答"),
+        [],
     )
     assert "[7]" in prompt and "资料7" in prompt
 

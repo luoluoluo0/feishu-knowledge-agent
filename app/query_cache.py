@@ -41,9 +41,11 @@ def make_key(
     min_score: float | None = None,
     top_k: int | None = None,
     corpus_revision: int | None = None,
+    include_reference: bool | None = None,
 ) -> str:
     """组合缓存键。min_score 必须入键：意图分档下同一查询在事实档和
-    总结档会得到不同的置信度判断，混用会串。"""
+    总结档会得到不同的置信度判断，混用会串。include_reference 同理：
+    内容型意图过滤参考文献、元数据类保留，同一查询两种过滤结果不同。"""
 
     if corpus_revision is None:
         corpus_revision = current_corpus_revision()
@@ -54,6 +56,7 @@ def make_key(
             "" if min_score is None else f"{min_score:.4f}",
             str(top_k or ""),
             str(corpus_revision),
+            "" if include_reference is None else str(include_reference),
         ]
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()

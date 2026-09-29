@@ -47,6 +47,17 @@ class Settings:
     # 单次 LLM 调用的超时秒数。不设的话 openai SDK 默认 600 秒，
     # 一次挂起的调用会占住工作线程十分钟。
     llm_timeout_seconds: int = 60
+    # Planner 计划步骤的最大并行检索数。计划步骤互相独立（没有哪一步
+    # 消费另一步的输出），串行只会白白相加每步的检索耗时。
+    planner_max_parallel_steps: int = 4
+    # Planner 最终回答的输出 token 上限（0 = 不限制）。提纲/对比类答案
+    # 的 decode 时间与长度成正比，硬上限直接砍总耗时。
+    planner_max_output_tokens: int = 2048
+    # 拼装进最终 prompt 的每步检索块数上限（0 = 不限，仅去重）。
+    # 实测（2026-09-29）：prompt 砍 24% 后首字时间无改善——首字瓶颈是
+    # 模型思考不是 prefill，本配置只有省 token 费用的价值；且重排头部
+    # 可能混入参考文献块、剪掉的尾部可能含相关内容，默认不启用。
+    planner_prompt_top_k_per_step: int = 0
     # 命中子块后是否扩展到父块补全上下文，以及父块文本预算。
     parent_expand_enabled: bool = True
     parent_expand_max_chars: int = 1600
@@ -238,6 +249,9 @@ def get_settings() -> Settings:
             "development",
         ),
         llm_timeout_seconds=int(get_env("FEISHU_LLM_TIMEOUT_SECONDS", "60")),
+        planner_max_parallel_steps=int(get_env("PLANNER_MAX_PARALLEL_STEPS", "4")),
+        planner_max_output_tokens=int(get_env("PLANNER_MAX_OUTPUT_TOKENS", "2048")),
+        planner_prompt_top_k_per_step=int(get_env("PLANNER_PROMPT_TOP_K_PER_STEP", "3")),
         rerank_threshold_by_intent=get_bool_env("RERANK_THRESHOLD_BY_INTENT", True),
         rerank_min_score_summary=float(get_env("RERANK_MIN_SCORE_SUMMARY", "0.35")),
         query_cache_enabled=get_bool_env("QUERY_CACHE_ENABLED", True),

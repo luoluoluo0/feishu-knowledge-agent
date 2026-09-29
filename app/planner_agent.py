@@ -1,4 +1,8 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import contextvars
 from dataclasses import dataclass
+import hashlib
+import re
 
 from app.config import Settings, get_settings
 from app.conversation_store import append_turn, load_history
@@ -79,6 +83,66 @@ def format_history_block(history: list[Turn]) -> str:
     return "\n".join(lines)
 
 
+def _bind_output_cap(llm, max_output_tokens: int):
+    """给 Planner 的模型实例绑定输出 token 上限。
+
+    Planner 的最终回答是提纲/对比类长文，decode 时间与输出长度成正比，
+    硬上限直接砍总耗时。bind 会同时作用于 answer() 的 invoke 和 api 层
+    的 stream；0 表示不限制，原样返回。只影响 Planner，不碰 tool_agent
+    侧的模型实例。
+    """
+
+    if max_output_tokens > 0:
+        return llm.bind(max_tokens=max_output_tokens)
+    return llm
+
+
+# 拼装层瘦身的块边界：工具结果文本里每个资料块以「资料N」行开头。
+_BLOCK_HEADER = re.compile(r"\n?(?=资料\d+\n)")
+
+
+def _block_identity(block: str) -> str:
+    """一个资料块的内容指纹：剥掉块号行、压平空白后取哈希。
+
+    同一个 chunk 被多个步骤捞回时，工具产出的文本逐字相同、只有
+    「资料N」行里的编号不同，剥掉编号行才能对上。同一页的两个不同
+    块内容不同，哈希也不同——不会误伤。
+    """
+
+    body = re.sub(r"^资料\d+\n", "", block.strip())
+    body = re.sub(r"\s+", "", body)
+    return hashlib.md5(body.encode("utf-8")).hexdigest()
+
+
+def _trim_step_result(result: str, top_k: int, seen_keys: set[str]) -> str:
+    """拼装层瘦身：跨步去重 + 每步只保留重排头部 top_k 条。
+
+    只剪「装订进最终 prompt 的页数」，不碰检索层——块已经在重排结果里
+    排好序，取头部是复用已有的排序判断。去重按内容指纹，零信息损失。
+    没有「资料N」块的文本（如「没有检索到」的降级说明）原样保留。
+    """
+
+    blocks = [b for b in re.split(_BLOCK_HEADER, result) if b.strip()]
+    if not any(re.match(r"^资料\d+\n", b) for b in blocks):
+        return result
+
+    kept: list[str] = []
+    kept_in_step = 0
+    for block in blocks:
+        if not re.match(r"^资料\d+\n", block):
+            kept.append(block)
+            continue
+        identity = _block_identity(block)
+        if identity in seen_keys:
+            continue
+        if top_k > 0 and kept_in_step >= top_k:
+            continue
+        seen_keys.add(identity)
+        kept_in_step += 1
+        kept.append(block)
+    return "\n".join(kept)
+
+
 class PlannerAgent:
     """可控 Planner Agent。
 
@@ -97,7 +161,9 @@ class PlannerAgent:
             from app.resources import get_retrieval_stack
 
             self.tools = get_retrieval_stack()
-        self.llm = build_llm(self.settings)
+        self.llm = _bind_output_cap(
+            build_llm(self.settings), self.settings.planner_max_output_tokens
+        )
 
     def run_step(self, step: PlanStep) -> str:
         """执行计划中的一步。
@@ -124,29 +190,60 @@ class PlannerAgent:
         return self.tools.search_all(step.query)
 
     def run_steps(self, plan: PlanResult, on_step=None) -> list[dict]:
-        """按顺序执行所有计划步骤，并保存每一步的工具结果。
+        """并行执行所有计划步骤，并保存每一步的工具结果。
 
-        on_step(step_result)：每完成一步回调一次——SSE 层用它把
-        「正在检索第几步」实时推给前端，而不是全部跑完才露面。
+        计划在执行前一次性生成，步骤之间没有数据依赖——没有任何一步
+        消费另一步的输出——所以可以并行检索（串行版在这里花掉
+        步数×单步耗时）。两点必须保住：
+
+        - 返回列表仍按步骤顺序排列，最终 prompt 里「步骤N」的编号
+          不能乱；
+        - on_step 按实际完成顺序触发，SSE 层的「正在检索第几步」
+          更及时，但不再与步骤编号顺序一致（前端只展示进度，无影响）。
+
+        底层检索栈与 tool_agent 的 langgraph 并行工具调用共用同一批
+        实例（Milvus gRPC / httpx 均线程安全），不引入新的共享状态。
         """
 
-        results = []
+        steps = list(enumerate(plan.steps, start=1))
+        results: list[dict | None] = [None] * len(steps)
 
-        for index, step in enumerate(plan.steps, start=1):
-            tool_result = self.run_step(step)
-            step_result = {
+        def run_one(index: int, step: PlanStep) -> dict:
+            return {
                 "step_index": index,
                 "tool": step.tool,
                 "query": step.query,
                 "item_id": step.item_id,
                 "reason": step.reason,
-                "result": tool_result,
+                "result": self.run_step(step),
             }
-            results.append(step_result)
-            if on_step is not None:
-                on_step(step_result)
 
-        return results
+        max_workers = min(self.settings.planner_max_parallel_steps, len(steps))
+        if max_workers <= 1:
+            for index, step in steps:
+                step_result = run_one(index, step)
+                results[index - 1] = step_result
+                if on_step is not None:
+                    on_step(step_result)
+            return [r for r in results if r is not None]
+
+        # 线程池新线程不会继承调用方的 ContextVar：意图（重排门槛、
+        # 参考文献过滤都靠它）和「资料N」引用注册表都存在 ContextVar
+        # 里，直接 submit 会在池线程里全部读到默认值——意图分档静默
+        # 失效、每个线程各发各的资料编号。每个任务各自 copy_context()
+        # 快照（提交时在调用方线程拍下）；注意一个 Context 对象同时
+        # 只能被一个线程 enter，所有任务共用同一个会直接 RuntimeError。
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(contextvars.copy_context().run, run_one, index, step)
+                for index, step in steps
+            ]
+            for future in as_completed(futures):
+                step_result = future.result()
+                results[step_result["step_index"] - 1] = step_result
+                if on_step is not None:
+                    on_step(step_result)
+        return [r for r in results if r is not None]
 
     def build_final_prompt(
         self,
@@ -163,13 +260,19 @@ class PlannerAgent:
         """
 
         result_texts = []
+        # 拼装层瘦身：去重 + 每步 top_k。top_k=0 表示不限制条数。
+        seen_keys: set[str] = set()
+        top_k = self.settings.planner_prompt_top_k_per_step
         for step_result in step_results:
+            trimmed = _trim_step_result(
+                str(step_result["result"]), top_k, seen_keys
+            )
             result_texts.append(
                 f"步骤{step_result['step_index']}\n"
                 f"工具：{step_result['tool']}\n"
                 f"检索问题：{step_result['query']}\n"
                 f"工具理由：{step_result['reason']}\n"
-                f"检索结果：\n{step_result['result']}"
+                f"检索结果：\n{trimmed}"
             )
 
         history_block = format_history_block(history or [])
@@ -183,6 +286,8 @@ class PlannerAgent:
 编号就是检索结果里「资料7」的数字 7；综合多条资料可以连写 [1][3]，
 但一处最多连写 2~3 个最相关的编号，不要罗列一长串。
 一般性转述或没有资料依据的说明不要标编号。
+长度约束：直接给出结论性内容，不要复述资料原文段落；提纲类每点一行、
+先要点后依据；总篇幅控制在千字以内，把篇幅留给用户问的内容。
 {history_section}
 用户问题：
 {question}
