@@ -95,3 +95,8 @@ langfuse-credentials.txt
 
 # LLM 评判的逐条结果（同 result_*，跑完的产物不入库）
 data/eval/judged_*.jsonl
+
+# ===== 模型权重不入库 =====
+finetune/**/models/
+*.safetensors
+*.gguf
