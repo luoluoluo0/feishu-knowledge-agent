@@ -100,3 +100,9 @@ data/eval/judged_*.jsonl
 finetune/**/models/
 *.safetensors
 *.gguf
+
+# ===== 意图路由微调：数据与评测输出含真实姓名，不随仓库发布 =====
+# （构成与切分见 finetune/intent_route/data/data_card.md，脱敏样例见
+#   finetune/intent_route/data_samples/）
+finetune/intent_route/data/
+finetune/intent_route/outputs/
