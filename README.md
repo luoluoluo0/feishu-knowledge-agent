@@ -38,44 +38,28 @@
 
 ## 🏗 架构
 
-```mermaid
-flowchart LR
-    subgraph IN["📥 数据接入"]
-        direction LR
-        FS["飞书文件夹<br/>WS 事件 + 每小时对账"]
-        UP["用户上传 PDF"]
-        Q[("幂等任务队列")]
-        W["Worker<br/>五道质检"]
-        C["父子切块"]
-        FS --> Q --> W --> C
-        UP --> W
-    end
-    subgraph ST["🗄 存储与检索"]
-        MV[("Milvus<br/>BGE 稠密 + BM25 稀疏")]
-    end
-    subgraph SV["🤖 智能服务"]
-        direction TB
-        API["FastAPI · 意图路由"]
-        TA["Tool Agent / Planner"]
-        LLM["DeepSeek"]
-        FT["图表专家 · LoRA"]
-        API --> TA
-        TA --> LLM
-        TA -.-> FT
-    end
-    U(["👤 用户"]) --> API
-    API -->|"SSE 流式"| FE["🖥 Web 前端<br/>工作台 / 文献库 / 对话"]
-    C --> MV
-    TA <--> MV
+```text
+                    👤 用户（JWT / API Key）
+                          │ POST /ask · SSE 流式 + 引用来源
+                          ▼
+┌─ 🤖 服务层 ───────────────────────────────────────
+│  FastAPI
+│    └─ 意图路由（七类 · 理解合并单次调用）
+│         ├─ Tool Agent / Planner 双链路
+│         │    ├─ LangGraph 并行工具调用
+│         │    ├─ DeepSeek · 回答生成
+│         │    ├─ Milvus · 混合检索（RRF 融合）
+│         │    └─ 图表专家 · Qwen2.5-7B LoRA（vLLM）
+│         └─ SSE 流式回答 + 引用来源 + Langfuse 追踪
+└───────────────────────────────────────────────────
 
-    classDef io fill:#e3f2fd,stroke:#1e88e5,color:#0d47a1
-    classDef proc fill:#fff8e1,stroke:#f9a825,color:#f57f17
-    classDef store fill:#e8f5e9,stroke:#43a047,color:#1b5e20
-    classDef brain fill:#f3e5f5,stroke:#8e24aa,color:#4a148c
-    class FS,UP,U,FE io
-    class Q,W,C proc
-    class MV store
-    class API,TA,LLM,FT brain
+                      ▲ 检索 / 写入
+                      │
+┌─ 📥 同步与入库 ───────────────────────────────────
+│  飞书共享文件夹（WebSocket 事件 + 每小时对账）
+│  用户上传 PDF
+│    └─ 幂等任务队列 → Worker（五道质检）→ 父子切块
+└───────────────────────────────────────────────────
 ```
 
 **一次提问的完整旅程**：问题进入 → 意图理解与改写（合并单次调用）→
