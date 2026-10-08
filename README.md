@@ -40,37 +40,42 @@
 
 ```mermaid
 flowchart LR
-    subgraph S["📥 数据来源"]
-        FS["飞书共享文件夹"]
+    subgraph IN["📥 数据接入"]
+        direction LR
+        FS["飞书文件夹<br/>WS 事件 + 每小时对账"]
         UP["用户上传 PDF"]
-    end
-    subgraph P["⚙️ 同步与入库"]
-        Q[("SQLite 幂等任务队列")]
-        W["独立 Worker"]
-        ING["解析（Docx Blocks / MinerU / pypdf）+ 五道质检"]
-        CHUNK["父子切块：句边界子块 + 3500 字父块"]
+        Q[("幂等任务队列")]
+        W["Worker<br/>五道质检"]
+        C["父子切块"]
+        FS --> Q --> W --> C
+        UP --> W
     end
     subgraph ST["🗄 存储与检索"]
-        MV[("Milvus：BGE 稠密 + BM25 icu 稀疏")]
+        MV[("Milvus<br/>BGE 稠密 + BM25 稀疏")]
     end
-    subgraph A["🤖 服务层"]
-        API["FastAPI /ask 意图路由"]
-        TA["Tool Agent / PlannerAgent"]
+    subgraph SV["🤖 智能服务"]
+        direction TB
+        API["FastAPI · 意图路由"]
+        TA["Tool Agent / Planner"]
         LLM["DeepSeek"]
-        FT["微调图表专家（LoRA · vLLM）"]
+        FT["图表专家 · LoRA"]
+        API --> TA
+        TA --> LLM
+        TA -.-> FT
     end
-    U(["用户（JWT / API Key）"]) --> API
-    FE["Web 前端：工作台 / 文献库 / 对话"]
-
-    FS -->|"WS 事件 + 每小时对账"| Q
-    Q --> W --> ING
-    UP --> ING
-    ING --> CHUNK --> MV
-    API --> TA
+    U(["👤 用户"]) --> API
+    API -->|"SSE 流式"| FE["🖥 Web 前端<br/>工作台 / 文献库 / 对话"]
+    C --> MV
     TA <--> MV
-    TA --> LLM
-    TA -.->|"图表细节"| FT
-    API -->|"SSE 流式 + 引用来源"| FE
+
+    classDef io fill:#e3f2fd,stroke:#1e88e5,color:#0d47a1
+    classDef proc fill:#fff8e1,stroke:#f9a825,color:#f57f17
+    classDef store fill:#e8f5e9,stroke:#43a047,color:#1b5e20
+    classDef brain fill:#f3e5f5,stroke:#8e24aa,color:#4a148c
+    class FS,UP,U,FE io
+    class Q,W,C proc
+    class MV store
+    class API,TA,LLM,FT brain
 ```
 
 **一次提问的完整旅程**：问题进入 → 意图理解与改写（合并单次调用）→
@@ -269,16 +274,6 @@ python -m ruff check app tests scripts
   无法提取。
 - 微调图表专家需要自行部署 vLLM 服务（`CHART_EXPERT_*` 配置），未配置
   时该工具不注册。
-
-## 🙏 致谢
-
-[LangGraph](https://github.com/langchain-ai/langgraph) ·
-[Milvus](https://github.com/milvus-io/milvus) ·
-[FastAPI](https://github.com/fastapi/fastapi) ·
-[Langfuse](https://github.com/langfuse/langfuse) ·
-[MinerU](https://github.com/opendatalab/MinerU) ·
-[DeepSeek](https://www.deepseek.com/) ·
-[Lark Open Platform](https://open.feishu.cn/)
 
 ## License
 
