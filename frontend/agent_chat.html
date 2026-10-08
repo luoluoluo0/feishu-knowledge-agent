@@ -1399,6 +1399,139 @@ sup.cite:hover {
   }
 }
 
+  .auth-panel {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .auth-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    background: transparent;
+    color: inherit;
+    font-size: 13px;
+  }
+  .auth-actions {
+    display: flex;
+    gap: 6px;
+  }
+  .workbench {
+    padding: 18px 6px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .workbench-greet { font-size: 18px; font-weight: 600; }
+  .workbench-sub { opacity: 0.75; font-size: 13px; }
+  .stat-cards { display: flex; gap: 10px; flex-wrap: wrap; }
+  .stat-card {
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 10px;
+    padding: 10px 14px;
+    min-width: 96px;
+  }
+  .stat-num { font-size: 20px; font-weight: 700; }
+  .stat-label { font-size: 12px; opacity: 0.7; }
+  .tpl-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tpl-btn {
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 999px;
+    background: transparent;
+    color: inherit;
+    padding: 6px 12px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .tpl-btn:hover { border-color: currentColor; }
+  .msg-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px dashed rgba(148, 163, 184, 0.35);
+    font-size: 12px;
+  }
+  .msg-badge {
+    border: 1px solid rgba(148, 163, 184, 0.5);
+    border-radius: 999px;
+    padding: 1px 8px;
+    opacity: 0.85;
+  }
+  .msg-actions button {
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+    opacity: 0.8;
+  }
+  .msg-actions button:hover { opacity: 1; text-decoration: underline; }
+  .lib-bar { display: flex; gap: 8px; padding: 10px 14px; align-items: center; flex-wrap: wrap; }
+  .lib-input {
+    flex: 1;
+    min-width: 200px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    background: transparent;
+    color: inherit;
+  }
+  .lib-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .lib-table th, .lib-table td {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  }
+  .lib-status { font-size: 12px; opacity: 0.8; }
+  .lib-star { cursor: pointer; border: none; background: transparent; font-size: 15px; }
+  .user-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-top: 1px solid rgba(148, 163, 184, 0.25);
+    cursor: pointer;
+  }
+  .user-chip:hover { background: rgba(148, 163, 184, 0.12); }
+  .user-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(148, 163, 184, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .user-chip-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .user-menu {
+    border-top: 1px solid rgba(148, 163, 184, 0.25);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .menu-item {
+    text-align: left;
+    border: none;
+    background: transparent;
+    color: inherit;
+    padding: 6px 8px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .menu-item:hover { background: rgba(148, 163, 184, 0.15); }
+  .menu-danger { color: #b91c1c; }
+  .token-cards { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -1406,6 +1539,7 @@ sup.cite:hover {
     <div class="game-title">🤖 文献组会 Agent</div>
     <div class="view-tabs">
       <button class="view-tab active" data-view="viewChat">💬 对话</button>
+      <button class="view-tab" data-view="viewLibrary">📚 文献库</button>
       <button class="view-tab" data-view="viewManage">🛠 管理</button>
     </div>
     <div class="topbar-right">
@@ -1417,6 +1551,20 @@ sup.cite:hover {
       </div>
     </div>
   </header>
+
+  <div id="viewWorkbench" class="view">
+    <div class="workbench">
+      <div class="workbench-greet" id="wbGreet">你好 👋</div>
+      <div class="workbench-sub">文献会话知识库已就绪——点常用提问直达对话，或在「对话」页自由提问。</div>
+      <div class="stat-cards" id="workbenchStats"><span class="hint">统计加载中……</span></div>
+      <div id="tokenStats"><span class="hint">Token 用量加载中……</span></div>
+      <div>
+        <div class="workbench-sub">常用提问（点击直达对话）：</div>
+        <div class="tpl-grid" id="wbTemplates"></div>
+      </div>
+      <div class="hint" id="wbAuthHint" style="display:none">当前未登录——在「对话」页左上角登录后，会话按账号隔离并同步服务端。</div>
+    </div>
+  </div>
 
   <div id="viewChat" class="view active">
     <div class="chat-layout">
@@ -1435,6 +1583,25 @@ sup.cite:hover {
         <button id="newSession" class="new-session-btn">＋ 新会话</button>
         <nav id="sessionList" class="session-list"></nav>
 
+        <div id="userMenu" class="user-menu" style="display: none">
+          <div id="menuLoggedOut">
+            <input id="authUsername" class="auth-input" placeholder="用户名" autocomplete="username" />
+            <input id="authPassword" class="auth-input" type="password" placeholder="密码（至少 6 位）" autocomplete="current-password" />
+            <div class="auth-actions">
+              <button id="authLogin" class="small-button">登录</button>
+              <button id="authRegister" class="small-button">注册</button>
+            </div>
+            <div class="hint" id="authHint">登录后对话按账号隔离，可从服务端恢复历史。</div>
+          </div>
+          <div id="menuLoggedIn" style="display: none">
+            <button id="menuWorkbench" class="menu-item">📊 个人工作台</button>
+            <button id="authLogout" class="menu-item menu-danger">退出登录</button>
+          </div>
+        </div>
+        <div id="userChip" class="user-chip" title="点击打开账号菜单">
+          <div class="user-avatar" id="userAvatar">?</div>
+          <div class="user-chip-name" id="userChipName">未登录</div>
+        </div>
         <div class="sessions-footer">
           <div class="hint">会话列表保存在本浏览器；删除会话会同时清空服务端该 ID 的全部记忆。</div>
         </div>
@@ -1451,6 +1618,24 @@ sup.cite:hover {
         </div>
       </section>
 
+    </div>
+  </div>
+
+  <div id="viewLibrary" class="view">
+    <div class="lib-bar">
+      <input id="libSearch" class="lib-input" placeholder="搜索编号 / 标题 / 整理者 / 关键词" />
+      <label class="hint"><input type="checkbox" id="libFavOnly" /> 只看收藏</label>
+      <span class="hint" id="libMeta">尚未加载。</span>
+    </div>
+    <div class="lib-bar">
+      <table class="lib-table">
+        <thead>
+          <tr><th>收藏</th><th>编号</th><th>标题</th><th>整理者</th><th>状态</th></tr>
+        </thead>
+        <tbody id="libRows">
+          <tr><td colspan="5" class="hint">加载中……</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 
@@ -1648,8 +1833,8 @@ sup.cite:hover {
           <div class="form-stack">
             <label class="field-label" for="threadIdInput">当前会话 ID</label>
             <input id="threadIdInput" value="feishu-web-user-1" />
-            <label class="field-label" for="apiKey">API Key</label>
-            <input id="apiKey" type="password" placeholder="输入 API Key" />
+            <label class="field-label" for="apiKey">管理员密钥（可选）</label>
+            <input id="apiKey" type="password" placeholder="管理通道用；登录用户无需填写" />
             <button id="saveConfig" class="small-button primary">保存配置</button>
             <button id="clearThread" class="small-button warning">清空当前会话记忆</button>
           </div>
@@ -1692,14 +1877,462 @@ sup.cite:hover {
     const clearTraceEl = document.getElementById("clearTrace");
 
     apiKeyEl.value = localStorage.getItem("feishuApiKey") || "";
-    threadIdEl.value = localStorage.getItem("feishuThreadId") || "feishu-web-user-1";
+    threadIdEl.value = localStorage.getItem(threadIdKey()) || "";
+    setAuthState(localStorage.getItem("feishuUsername"));
 
     function headers() {
-      return {
-        "Content-Type": "application/json",
-        "X-API-Key": apiKeyEl.value.trim(),
-      };
+      const result = { "Content-Type": "application/json" };
+      const token = localStorage.getItem("feishuJwt") || "";
+      if (token) result["Authorization"] = "Bearer " + token;
+      const apiKey = apiKeyEl.value.trim();
+      if (apiKey) result["X-API-Key"] = apiKey;
+      return result;
     }
+
+    // ===== 用户认证：登录态、服务端会话同步与历史恢复 =====
+
+    function setAuthState(username) {
+      const loggedOut = document.getElementById("menuLoggedOut");
+      const loggedIn = document.getElementById("menuLoggedIn");
+      if (!loggedOut || !loggedIn) return;
+      loggedOut.style.display = username ? "none" : "";
+      loggedIn.style.display = username ? "" : "none";
+      const avatar = document.getElementById("userAvatar");
+      const chipName = document.getElementById("userChipName");
+      if (avatar) avatar.textContent = username ? username.slice(0, 1) : "?";
+      if (chipName) chipName.textContent = username || "未登录";
+    }
+
+    function toggleUserMenu(force) {
+      const menu = document.getElementById("userMenu");
+      if (!menu) return;
+      const show = force !== undefined ? force : menu.style.display === "none";
+      menu.style.display = show ? "flex" : "none";
+    }
+
+    function logoutLocal(message) {
+      localStorage.removeItem("feishuJwt");
+      localStorage.removeItem("feishuUserId");
+      localStorage.removeItem("feishuUsername");
+      setAuthState("");
+      initChatSessionView();
+      if (message) {
+        const hint = document.getElementById("authHint");
+        if (hint) hint.textContent = message;
+      }
+    }
+
+    async function authRequest(path, username, password) {
+      const hint = document.getElementById("authHint");
+      try {
+        const response = await fetch(apiBase + path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const detail = data.detail || {};
+          hint.textContent =
+            detail.message || "操作失败（HTTP " + response.status + "）";
+          return false;
+        }
+        localStorage.setItem("feishuJwt", data.token);
+        localStorage.setItem("feishuUserId", String(data.user.id));
+        localStorage.setItem("feishuUsername", data.user.username);
+        setAuthState(data.user.username);
+        hint.textContent = "已登录，会话与历史按账号隔离加载。";
+        initChatSessionView();
+        toggleUserMenu(false);
+        return true;
+      } catch (err) {
+        hint.textContent = "网络错误：" + err;
+        return false;
+      }
+    }
+
+    async function syncServerSessions() {
+      const token = localStorage.getItem("feishuJwt") || "";
+      if (!token) return;
+      try {
+        const response = await fetch(apiBase + "/auth/sessions", {
+          headers: headers(),
+        });
+        if (response.status === 401) {
+          logoutLocal("登录已过期，请重新登录。");
+          return;
+        }
+        if (!response.ok) return;
+        const data = await response.json();
+        const remote = data.sessions || [];
+        if (!remote.length) return;
+        const known = new Map(sessions.map((item) => [item.id, item]));
+        let added = false;
+        for (const item of remote) {
+          if (!known.has(item.thread_id)) {
+            known.set(item.thread_id, {
+              id: item.thread_id,
+              name: item.thread_id,
+              createdAt: Date.now(),
+            });
+            added = true;
+          }
+        }
+        if (!added) return;
+        sessions = [...known.values()].sort(
+          (a, b) => (b.createdAt || 0) - (a.createdAt || 0)
+        );
+        persistSessions();
+        renderSessionList();
+      } catch {
+        // 服务端不可达时不阻塞登录态展示。
+      }
+    }
+
+    async function restoreServerHistory(sessionId) {
+      const token = localStorage.getItem("feishuJwt") || "";
+      if (!token) return;
+      const store = transcripts[sessionId] || { messages: [] };
+      const localMessages = Array.isArray(store) ? store : store.messages || [];
+      // 本地完整（有用户提问）才以本地为准；本地缺提问（切会话重挂载
+      // 时代出过 view 的旧缺陷）而服务端有台账时，用服务端版本自愈。
+      const localHasUser = localMessages.some((m) => m.role === "user");
+      if (localMessages.length > 0 && localHasUser) return;
+      try {
+        const response = await fetch(
+          apiBase + "/auth/history/" + encodeURIComponent(sessionId),
+          { headers: headers() }
+        );
+        if (response.status === 401) {
+          logoutLocal("登录已过期，请重新登录。");
+          return;
+        }
+        if (!response.ok) return;
+        const data = await response.json();
+        const messages = data.messages || [];
+        if (!messages.length) return;
+        const entries = messages.map((m) => ({
+          role: m.role,
+          html: escapeHtml(m.content).replace(/\n/g, "<br>"),
+        }));
+        messagesEl.innerHTML = entries
+          .map((e) => `<div class="message ${e.role}">${e.html}</div>`)
+          .join("");
+        transcripts[sessionId] = { messages: entries };
+        persistSessions();
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      } catch {
+        // 恢复失败保持本地问候语，不阻塞使用。
+      }
+    }
+
+    document.getElementById("authLogin").addEventListener("click", async () => {
+      await authRequest(
+        "/auth/login",
+        document.getElementById("authUsername").value.trim(),
+        document.getElementById("authPassword").value
+      );
+    });
+    document.getElementById("authRegister").addEventListener("click", async () => {
+      await authRequest(
+        "/auth/register",
+        document.getElementById("authUsername").value.trim(),
+        document.getElementById("authPassword").value
+      );
+    });
+    document.getElementById("authLogout").addEventListener("click", () => {
+      logoutLocal("已退出登录。");
+      toggleUserMenu(false);
+    });
+    document.getElementById("userChip").addEventListener("click", () =>
+      toggleUserMenu()
+    );
+    document.getElementById("menuWorkbench").addEventListener("click", () => {
+      toggleUserMenu(false);
+      switchView("viewWorkbench");
+    });
+
+    // ===== 工作台 / 回答操作条 / 文献库 =====
+
+    const INTENT_LABELS = {
+      simple_qa: "知识库问答",
+      metadata_query: "文献查询",
+      summary_paper: "论文总结",
+      summary_ppt: "PPT 总结",
+      compare_papers: "对比分析",
+      group_report: "组会提纲",
+    };
+
+    function intentLabel(intent, mode) {
+      const name = INTENT_LABELS[intent] || intent || "问答";
+      const route = mode === "planner_agent" ? "Planner" : "Tool Agent";
+      return name + " · " + route;
+    }
+
+    const WORKBENCH_TEMPLATES = [
+      "总结第 010 篇论文的研究方法与结论",
+      "对比第 012 篇和第 045 篇的研究方法",
+      "根据第 062 篇生成组会汇报提纲",
+      "第 049 篇的图表都有哪些？",
+      "哪些文献缺 PDF？",
+      "知识库里有哪些文献主题？",
+    ];
+
+    function fillWorkbenchView() {
+      const greetEl = document.getElementById("wbGreet");
+      const username = localStorage.getItem("feishuUsername") || "";
+      const hour = new Date().getHours();
+      const greet =
+        hour < 6 ? "夜深了" : hour < 12 ? "早上好" : hour < 18 ? "下午好" : "晚上好";
+      if (greetEl) {
+        greetEl.textContent =
+          greet + (username ? "，" + username : "") + " 👋";
+      }
+      const templates = document.getElementById("wbTemplates");
+      if (templates && !templates.childElementCount) {
+        WORKBENCH_TEMPLATES.forEach((item) => {
+          const button = document.createElement("button");
+          button.className = "tpl-btn";
+          button.dataset.tpl = item;
+          button.textContent = item;
+          templates.appendChild(button);
+        });
+      }
+      fillWorkbenchStats();
+    }
+
+    async function fillWorkbenchStats() {
+      const card = document.getElementById("workbenchStats");
+      if (!card) return;
+      if (!localStorage.getItem("feishuJwt")) {
+        card.innerHTML = '<span class="hint">登录后可查看个人统计。</span>';
+        return;
+      }
+      try {
+        const response = await fetch(apiBase + "/auth/stats", {
+          headers: headers(),
+        });
+        if (!response.ok) {
+          card.innerHTML = '<span class="hint">统计暂不可用。</span>';
+          return;
+        }
+        const data = await response.json();
+        const tokens = data.tokens || {};
+        card.innerHTML = [
+          ["我的会话", data.sessions],
+          ["累计提问", data.questions],
+          ["库内文献", data.library],
+        ]
+          .map(
+            ([label, num]) =>
+              `<div class="stat-card"><div class="stat-num">${num}</div><div class="stat-label">${label}</div></div>`
+          )
+          .join("");
+        const tokenCard = document.getElementById("tokenStats");
+        if (tokenCard) {
+          tokenCard.innerHTML =
+            '<span class="hint">Token 用量（按请求日志归因）：</span>' +
+            '<div class="token-cards">' +
+            [
+              ["累计 Tokens", tokens.total_tokens],
+              ["今日 Tokens", tokens.today_tokens],
+              ["请求数", tokens.requests],
+            ]
+              .map(
+                ([label, num]) =>
+                  `<div class="stat-card"><div class="stat-num">${num ?? 0}</div><div class="stat-label">${label}</div></div>`
+              )
+              .join("") +
+            "</div>";
+        }
+      } catch {
+        card.innerHTML = '<span class="hint">统计暂不可用。</span>';
+      }
+    }
+
+    function appendAnswerBar(assistantEl, payload) {
+      const bar = document.createElement("div");
+      bar.className = "msg-actions";
+      bar.dataset.thread = payload.thread || "";
+      bar.dataset.question = payload.question || "";
+      bar.dataset.answer = payload.answer || "";
+      const badge = document.createElement("span");
+      badge.className = "msg-badge";
+      badge.textContent = intentLabel(payload.intent, payload.mode);
+      const makeButton = (act, text) => {
+        const button = document.createElement("button");
+        button.dataset.act = act;
+        button.textContent = text;
+        return button;
+      };
+      bar.append(
+        badge,
+        makeButton("copy", "复制"),
+        makeButton("export", "导出 MD"),
+        makeButton("up", "👍"),
+        makeButton("down", "👎")
+      );
+      assistantEl.appendChild(bar);
+    }
+
+    document
+      .getElementById("wbTemplates")
+      .addEventListener("click", (event) => {
+        const templateButton = event.target.closest("[data-tpl]");
+        if (!templateButton) return;
+        switchView("viewChat");
+        questionEl.value = templateButton.dataset.tpl;
+        questionEl.focus();
+      });
+
+    messagesEl.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-act]");
+      if (!button) return;
+      const bar = button.closest(".msg-actions");
+      if (!bar) return;
+      const action = button.dataset.act;
+
+      if (action === "copy") {
+        try {
+          await navigator.clipboard.writeText(bar.dataset.answer || "");
+          button.textContent = "已复制";
+          setTimeout(() => (button.textContent = "复制"), 1200);
+        } catch {}
+        return;
+      }
+      if (action === "export") {
+        const content =
+          "# 文献会话 Agent 回答\n\n**提问：** " +
+          (bar.dataset.question || "") +
+          "\n\n" +
+          (bar.dataset.answer || "");
+        const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "answer-" + Date.now() + ".md";
+        link.click();
+        URL.revokeObjectURL(link.href);
+        return;
+      }
+      if (action === "up" || action === "down") {
+        if (!localStorage.getItem("feishuJwt")) {
+          button.textContent = "登录后可反馈";
+          return;
+        }
+        try {
+          const response = await fetch(apiBase + "/auth/feedback", {
+            method: "POST",
+            headers: headers(),
+            body: JSON.stringify({
+              thread_id: bar.dataset.thread,
+              question: bar.dataset.question,
+              rating: action === "up" ? 1 : -1,
+            }),
+          });
+          button.textContent = response.ok ? "已反馈" : "反馈失败";
+        } catch {
+          button.textContent = "反馈失败";
+        }
+      }
+    });
+
+    let libraryCache = [];
+    let libraryLoaded = false;
+
+    async function loadLibraryView() {
+      const token = localStorage.getItem("feishuJwt") || "";
+      const rows = document.getElementById("libRows");
+      const meta = document.getElementById("libMeta");
+      if (!token) {
+        meta.textContent = "登录后可浏览文献库。";
+        rows.innerHTML =
+          '<tr><td colspan="5" class="hint">请先在对话页登录。</td></tr>';
+        return;
+      }
+      if (libraryLoaded) {
+        renderLibraryRows();
+        return;
+      }
+      try {
+        const response = await fetch(apiBase + "/auth/library", {
+          headers: headers(),
+        });
+        if (response.status === 401) {
+          logoutLocal("登录已过期，请重新登录。");
+          return;
+        }
+        const data = await response.json();
+        libraryCache = data.items || [];
+        libraryLoaded = true;
+        meta.textContent = "共 " + (data.total ?? libraryCache.length) + " 篇。";
+        renderLibraryRows();
+      } catch {
+        meta.textContent = "加载失败。";
+      }
+    }
+
+    function renderLibraryRows() {
+      const rows = document.getElementById("libRows");
+      const keyword = (document.getElementById("libSearch").value || "")
+        .trim()
+        .toLowerCase();
+      const favOnly = document.getElementById("libFavOnly").checked;
+      const visible = libraryCache.filter((item) => {
+        if (favOnly && !item.favorite) return false;
+        if (!keyword) return true;
+        return (item.item_id + " " + item.title + " " + item.reader)
+          .toLowerCase()
+          .includes(keyword);
+      });
+      if (!visible.length) {
+        rows.innerHTML =
+          '<tr><td colspan="5" class="hint">没有匹配的文献。</td></tr>';
+        return;
+      }
+      rows.innerHTML = visible
+        .map(
+          (item) =>
+            "<tr>" +
+            `<td><button class="lib-star" data-item="${escapeHtml(item.item_id)}" data-fav="${item.favorite ? 1 : 0}">${item.favorite ? "★" : "☆"}</button></td>` +
+            `<td>${escapeHtml(item.item_id)}</td>` +
+            `<td>${escapeHtml(item.title)}</td>` +
+            `<td>${escapeHtml(item.reader)}</td>` +
+            `<td class="lib-status">${escapeHtml(item.status)}${item.has_pdf ? " · PDF" : ""}${item.has_ppt ? " · PPT" : ""}</td>` +
+            "</tr>"
+        )
+        .join("");
+    }
+
+    document.getElementById("libSearch").addEventListener("input", renderLibraryRows);
+    document.getElementById("libFavOnly").addEventListener("change", renderLibraryRows);
+    document.getElementById("libRows").addEventListener("click", async (event) => {
+      const star = event.target.closest(".lib-star");
+      if (!star) return;
+      const itemId = star.dataset.item;
+      const isFavorite = star.dataset.fav === "1";
+      try {
+        const response = await fetch(
+          apiBase +
+            "/auth/favorites" +
+            (isFavorite ? "/" + encodeURIComponent(itemId) : ""),
+          {
+            method: isFavorite ? "DELETE" : "POST",
+            headers: headers(),
+            body: isFavorite ? undefined : JSON.stringify({ item_id: itemId }),
+          }
+        );
+        if (response.status === 401) {
+          logoutLocal("登录已过期，请重新登录。");
+          return;
+        }
+        if (!response.ok) return;
+        const cached = libraryCache.find((item) => item.item_id === itemId);
+        if (cached) cached.favorite = !isFavorite;
+        renderLibraryRows();
+      } catch {
+        // 网络抖动忽略，星星保持原状。
+      }
+    });
 
     function escapeHtml(value) {
       return String(value || "")
@@ -1971,6 +2604,12 @@ sup.cite:hover {
     // 流式问答。返回完整答案，顺便把过程渲染到界面上。
     // abortSignal 由调用方持有——点「停止」时中断连接，
     // 后端检测到断开会自行止损（取消检索与写历史）。
+    // 在途流登记：同一时间只有一条流（发送期间按钮已禁用）。
+    // 切走会话时气泡被摘出 DOM 但流还在生成；切回来时按登记把
+    // 仍在生成的气泡重新挂回消息区，渲染继续可见（见 restoreSession）。
+    let activeStreamSessionId = null;
+    let activeStreamNodes = [];
+
     async function streamAsk(question, threadId, assistantEl, statusEl, abortSignal) {
       const response = await fetch(`${apiBase}/ask/stream`, {
         method: "POST",
@@ -1980,6 +2619,7 @@ sup.cite:hover {
       });
 
       if (!response.ok) {
+        if (response.status === 401) logoutLocal("登录已过期，请重新登录。");
         const data = await response.json().catch(() => ({}));
         throw new Error(errorMessage(data, `请求失败（HTTP ${response.status}）`));
       }
@@ -1992,6 +2632,8 @@ sup.cite:hover {
       let buffer = "";
       let answer = "";
       let started = false;
+      let streamIntent = "";
+      let streamMode = "";
       let renderQueued = false;
       let result = null;
       let stalled = false;
@@ -2056,6 +2698,10 @@ sup.cite:hover {
               ? `（已改写为「${event.rewritten_query}」）`
               : "";
             statusEl.textContent = `已理解意图：${event.intent}${rewritten}`;
+            if (event.stage === "understood") {
+              streamIntent = event.intent || "";
+              streamMode = event.mode || "";
+            }
           } else if (event.type === "tool") {
             const what = event.query ? `：${event.query}` : "";
             statusEl.textContent = `正在${toolActionLabel(event.name)}${what}`;
@@ -2068,6 +2714,13 @@ sup.cite:hover {
             scheduleRender();
           } else if (event.type === "done") {
             result = event;
+            appendAnswerBar(assistantEl, {
+              thread: threadId,
+              question,
+              answer,
+              intent: streamIntent,
+              mode: streamMode,
+            });
           } else if (event.type === "error") {
             throw new Error(event.message || "流式请求失败。");
           }
@@ -2558,6 +3211,10 @@ sup.cite:hover {
         const body = document.createElement("div");
         bubble.appendChild(status);
         bubble.appendChild(body);
+        activeStreamSessionId = requestSessionId;
+        // 整组节点一起登记：回答气泡之外，本轮的用户提问气泡也要——
+        // 否则重挂载时问题就丢了。
+        activeStreamNodes = [...messagesEl.children];
 
         try {
           const { answer, result } = await streamAsk(
@@ -2591,6 +3248,8 @@ sup.cite:hover {
             );
           }
         } finally {
+          activeStreamSessionId = null;
+          activeStreamNodes = [];
           sendEl.removeEventListener("click", onStop);
           sendEl.classList.remove("stop");
           sendEl.disabled = false;
@@ -2663,7 +3322,7 @@ sup.cite:hover {
 
     saveConfigEl.addEventListener("click", () => {
       localStorage.setItem("feishuApiKey", apiKeyEl.value.trim());
-      localStorage.setItem("feishuThreadId", threadIdEl.value.trim());
+      localStorage.setItem(threadIdKey(), threadIdEl.value.trim());
       addMessage("assistant", "配置已保存。");
     });
 
@@ -2812,7 +3471,9 @@ sup.cite:hover {
 // ======================================================================
 const viewTabButtons = document.querySelectorAll(".view-tab");
 const viewPanes = {
+  viewWorkbench: document.getElementById("viewWorkbench"),
   viewChat: document.getElementById("viewChat"),
+  viewLibrary: document.getElementById("viewLibrary"),
   viewManage: document.getElementById("viewManage"),
 };
 
@@ -2825,6 +3486,12 @@ function switchView(viewName) {
   });
   if (viewName === "viewManage") {
     maybeLoadOverview();
+  }
+  if (viewName === "viewLibrary") {
+    loadLibraryView();
+  }
+  if (viewName === "viewWorkbench") {
+    fillWorkbenchView();
   }
 }
 
@@ -3425,8 +4092,20 @@ document.getElementById("reloadObserve").addEventListener("click", loadObserve);
 // localStorage——服务端记忆在 checkpointer / conversation_store 里，
 // 清浏览器缓存不影响服务端，反之切换会话也不动服务端。
 // ======================================================================
-const SESSIONS_KEY = "feishuSessions";
-const TRANSCRIPTS_KEY = "feishuTranscripts";
+// 会话缓存按用户分命名空间：同一浏览器切换账号时，各看各的本地缓存。
+// 服务端隔离由 thread 归属校验保证；这里防的是本地展示层串号。
+function currentUserKey() {
+  return localStorage.getItem("feishuUserId") || "anon";
+}
+function sessionsKey() {
+  return "feishuSessions:" + currentUserKey();
+}
+function transcriptsKey() {
+  return "feishuTranscripts:" + currentUserKey();
+}
+function threadIdKey() {
+  return "feishuThreadId:" + currentUserKey();
+}
 const GREETING_HTML =
   '<div class="message assistant">你好，可以问我文献、PDF、PPT、组会汇报提纲相关问题。</div>';
 
@@ -3448,8 +4127,8 @@ function loadJson(key, fallback) {
 
 function persistSessions() {
   try {
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
-    localStorage.setItem(TRANSCRIPTS_KEY, JSON.stringify(transcripts));
+    localStorage.setItem(sessionsKey(), JSON.stringify(sessions));
+    localStorage.setItem(transcriptsKey(), JSON.stringify(transcripts));
   } catch {
     // 存储超限之类的问题不影响对话本身，静默即可。
   }
@@ -3461,12 +4140,25 @@ function makeSessionId() {
 
 function captureTranscript() {
   // 把当前消息区快照成转录（跳过瞬态的 status-line）。
+  // 状态行嵌在回答气泡内部，顶层过滤拦不住它——切会话瞬间它会被
+  // 冻结进存档，切回来就成了永远「正在检索」的僵尸行。捕获时克隆
+  // 一份把任意深度的状态行剥掉。
   return [...messagesEl.children]
     .filter((el) => !el.classList.contains("status-line"))
-    .map((el) => ({
-      role: el.classList.contains("user") ? "user" : "assistant",
-      html: el.innerHTML,
-    }));
+    .map((el) => {
+      let html = el.innerHTML;
+      if (el.querySelector(".status-line")) {
+        const clone = el.cloneNode(true);
+        clone
+          .querySelectorAll(".status-line")
+          .forEach((node) => node.remove());
+        html = clone.innerHTML;
+      }
+      return {
+        role: el.classList.contains("user") ? "user" : "assistant",
+        html,
+      };
+    });
 }
 
 // 面板状态（工具/解释/来源/原始返回）与会话一起持久化——
@@ -3582,6 +4274,16 @@ function resetTracePanels() {
 }
 
 function restoreSession(sessionId) {
+  // 在途流所在会话：不按存档渲染（那会是切走瞬间的旧快照），改为
+  // 把仍在生成的活跃气泡重新挂回消息区——后续流式渲染继续可见。
+  if (activeStreamSessionId === sessionId && activeStreamNodes.length) {
+    if (!activeStreamNodes[0].isConnected) {
+      messagesEl.innerHTML = "";
+      activeStreamNodes.forEach((node) => messagesEl.appendChild(node));
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+    return;
+  }
   const store = transcripts[sessionId] || { messages: [] };
   const messages = Array.isArray(store) ? store : store.messages || [];
   const panels = Array.isArray(store) ? null : store.panels;
@@ -3594,9 +4296,14 @@ function restoreSession(sessionId) {
           `<div class="message ${entry.role}">${entry.html}</div>`
       )
       .join("");
+    // 自愈：早期版本的存档可能冻有状态行，渲染时剥掉。
+    messagesEl
+      .querySelectorAll(".status-line")
+      .forEach((node) => node.remove());
   }
   restorePanels(panels);
   messagesEl.scrollTop = messagesEl.scrollHeight;
+  restoreServerHistory(sessionId);
 }
 
 function switchSession(sessionId) {
@@ -3604,7 +4311,7 @@ function switchSession(sessionId) {
   saveCurrentTranscript();
   currentSessionId = sessionId;
   threadIdEl.value = sessionId;
-  localStorage.setItem("feishuThreadId", sessionId);
+  localStorage.setItem(threadIdKey(), sessionId);
   resetTracePanels();
   restoreSession(sessionId);
   const activeSession = sessions.find((item) => item.id === sessionId);
@@ -3627,7 +4334,7 @@ function newSession() {
   const session = createSession();
   currentSessionId = session.id;
   threadIdEl.value = session.id;
-  localStorage.setItem("feishuThreadId", session.id);
+  localStorage.setItem(threadIdKey(), session.id);
   messagesEl.innerHTML = GREETING_HTML;
   renderSessionList();
   resetTracePanels();
@@ -3668,10 +4375,15 @@ function routeResultToSession(sessionId, question, answer, result) {
       ? existing.messages
       : [];
   if (answer) {
-    messages.push({
-      role: "assistant",
-      html: renderMarkdown(answer).innerHTML,
-    });
+    const full = renderMarkdown(answer).innerHTML;
+    const last = messages[messages.length - 1];
+    if (last && last.role === "assistant") {
+      // 切会话前流式已写入半截回答（可能带冻结的状态行）：这是同一条
+      // 回答的未完成态，用完整版替换而不是追加，避免切回来看到两条。
+      last.html = full;
+    } else {
+      messages.push({ role: "assistant", html: full });
+    }
   }
   // result 存在才更新面板（正常完成）；错误路由保留已有面板，
   // 避免把占位符覆盖到之前攒好的来源上。
@@ -3696,19 +4408,25 @@ function routeResultToSession(sessionId, question, answer, result) {
 
 newSessionEl.addEventListener("click", newSession);
 
-// 会话初始化：优先用已存列表；全新浏览器则从旧 thread_id 配置迁移。
-sessions = loadJson(SESSIONS_KEY, []);
-transcripts = loadJson(TRANSCRIPTS_KEY, {});
-if (sessions.length === 0) {
-  const legacyId =
-    localStorage.getItem("feishuThreadId") || threadIdEl.value.trim() || "feishu-web-user-1";
-  sessions = [{ id: legacyId, name: "新会话", createdAt: Date.now() }];
-  persistSessions();
+// 会话视图初始化：按当前用户命名空间加载本地缓存，再同步服务端。
+// 登录/退出时也会重跑（切换命名空间），保证各账号各看各的。
+function initChatSessionView() {
+  sessions = loadJson(sessionsKey(), []);
+  transcripts = loadJson(transcriptsKey(), {});
+  if (sessions.length === 0) {
+    sessions = [{ id: makeSessionId(), name: "新会话", createdAt: Date.now() }];
+    persistSessions();
+  }
+  currentSessionId = sessions[0].id;
+  threadIdEl.value = currentSessionId;
+  localStorage.setItem(threadIdKey(), currentSessionId);
+  restoreSession(currentSessionId);
+  renderSessionList();
+  if (localStorage.getItem("feishuJwt")) syncServerSessions();
 }
-currentSessionId = sessions[0].id;
-threadIdEl.value = currentSessionId;
-restoreSession(currentSessionId);
-renderSessionList();
+
+initChatSessionView();
+switchView("viewChat");
 
     checkHealth();
     loadLogs();

@@ -123,6 +123,10 @@ class Settings:
     feishu_sync_download_dir: str = str(
         PROJECT_DIR / "data" / "runtime" / "feishu_sync" / "files"
     )
+    # 用户体系：JWT 签名密钥与令牌有效期（分钟）。密钥留空时进程启动
+    # 会临时随机生成，重启后所有已登录用户失效（见 app/users.py）。
+    jwt_secret: str = ""
+    jwt_expire_minutes: int = 1440
 
 
 def get_env(name: str, default: str = "") -> str:
@@ -216,6 +220,8 @@ def get_settings() -> Settings:
         ),
         service_api_key=get_service_api_key(),
         rate_limit_per_minute=int(get_env("FEISHU_RATE_LIMIT_PER_MINUTE", "3")),
+        jwt_secret=get_env("JWT_SECRET", ""),
+        jwt_expire_minutes=int(get_env("JWT_EXPIRE_MINUTES", "1440")),
     # 每次调用模型之前，把历史里用过的检索原文换成一行提示。
     #
     # 默认关闭。实测开启后准确率不掉（90% vs 90%），但延迟反而从

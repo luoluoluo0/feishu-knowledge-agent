@@ -1,45 +1,63 @@
+<div align="center">
+
 # feishu-knowledge-agent
 
-把管理员指定的飞书共享文件夹自动同步到 Milvus，并通过 LangGraph Agent
-提供带原文链接的中文问答。支持飞书新版 Docx、PDF、WebSocket 事件、每小时
-递归对账、SQLite 幂等任务队列、失败重试和 7 天软删除。
+**飞书知识库 RAG Agent：增量同步 · 父子切块 · 混合检索 · 多用户隔离 · 微调图表专家**
+
+[![CI](https://github.com/luoluoluo0/feishu-knowledge-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/luoluoluo0/feishu-knowledge-agent/actions/workflows/ci.yml)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Python](https://img.shields.io/badge/python-3.11-blue)
+
+把管理员指定的飞书共享文件夹自动同步成可检索的知识库，通过 LangGraph Agent
+提供带原文引用的中文流式问答。支持飞书新版 Docx、PDF、WebSocket 事件、
+每小时递归对账、SQLite 幂等任务队列、失败重试和 7 天软删除。
 
 > 本项目是社区开源项目，与飞书或 Lark 官方无隶属、授权或背书关系。
 
-## 数据流
+</div>
 
-```text
-飞书共享文件夹
-  → WebSocket 事件 + 定时递归对账
-  → SQLite 去重任务与同步台账
-  → 独立 Worker
-  → Docx Blocks / PDF MinerU 或 pypdf
-  → 父子切块 + Embedding + Milvus
-  → Agent 检索 + 飞书原文链接
+## ✨ 项目亮点
+
+- **飞书增量同步引擎**——WebSocket 事件 + 每小时递归对账双保险；文档更新走
+  「旧快照 → 新块 → 查回质检 → 失败回滚」，同内容 SHA-256 去重；对账时按
+  item_id 抽查向量库行数，台账与数据脱节自动重灌（自愈）。
+- **父子切块 + 混合检索**——章节内按句边界切子块（检索粒度），聚合 3500 字
+  父块（回答上下文）；Milvus 单集合双字段（BGE 稠密 + BM25 icu 稀疏）RRF
+  融合，中文查询自动翻译以激活英文关键词通道。
+- **七类意图路由的多业务 Agent**——知识库问答 / 文献元数据 / 总结论文 /
+  总结 PPT / 对比分析 / 组会提纲 / 图表专家，自动分发 Tool Agent 或
+  Planner 双链路；LangGraph 线程池并行执行同轮多工具调用。
+- **多用户体系**——JWT 注册登录（pbkdf2 密码哈希）、thread 归属数据隔离
+  （越权 403）、限流按凭证分桶（用户互不挤占）、请求日志按用户归因、
+  工作台 Token 用量可视化。
+- **微调图表专家**——Qwen2.5-7B LoRA 微调模型经 vLLM 以 OpenAI 兼容接口
+  服务化，作为 Agent 的一个工具回答图表细节问题（颜色、方位、数值、构成）。
+- **全链路可观测**——Langfuse 追踪每一次模型调用与工具往返；按意图分档的
+  重排置信门槛；回答 👍👎 反馈落库；工作台实时展示个人 Token 用量。
+
+## 🏗 架构
+
+```mermaid
+flowchart LR
+    subgraph 来源
+        FS[飞书共享文件夹]
+        UP[用户上传 PDF]
+    end
+    FS -->|"WebSocket 事件 + 每小时对账"| Q[("SQLite 幂等任务队列")]
+    UP --> ING
+    Q --> W["独立 Worker"] --> ING["解析（Docx Blocks / MinerU / pypdf）+ 五道质检"]
+    ING --> CHUNK["父子切块：句边界子块 + 3500 字父块"]
+    CHUNK --> MV[("Milvus：BGE 稠密 + BM25 稀疏")]
+
+    U(["用户（JWT / API Key）"]) --> API["FastAPI /ask 意图路由"]
+    API --> TA["Tool Agent / PlannerAgent（LangGraph 并行工具）"]
+    TA --> MV
+    TA --> LLM["DeepSeek"]
+    TA -.->|图表细节| FT["微调图表专家（LoRA · vLLM）"]
+    API -->|"SSE 流式 + 引用来源"| FE["Web 前端：工作台 / 文献库 / 对话"]
 ```
 
-首版使用应用身份，配置的所有文件夹内容会进入同一个共享知识库；不实现
-用户级 OAuth 和 ACL。不要把权限不同的私密资料放入同步文件夹。
-
-Agent 默认按通用飞书知识库助手工作，可回答制度、流程、产品、项目和业务
-文档问题。原项目的论文检索、文献卡片、PPT 与组会提纲能力作为兼容场景保留；
-`search_paper` 等内部工具名暂不重命名，以免破坏旧调用和已有部署。
-
-## 1. 创建飞书应用
-
-1. 在飞书开放平台创建企业自建应用。
-2. 为应用开通云空间文件元数据只读、云文档内容读取、文件下载以及事件订阅
-   所需权限；发布新版本并等待管理员审批。
-3. 在目标文件夹的协作者设置中添加该应用，让应用至少拥有查看权限。
-4. 在“事件与回调”中选择长连接模式，订阅文件创建、编辑、标题更新、删除和
-   移入回收站事件。
-5. 从文件夹 URL 取得 folder token，填入 `FEISHU_FOLDER_TOKENS`。多个 token
-   用英文逗号分隔。
-
-权限名称可能随飞书控制台调整；以接口页“权限要求”显示的名称为准。程序若
-权限不足，会在管理接口保留飞书 Log ID，并自动降级到定时对账。
-
-## 2. 本地启动
+## 🚀 本地启动
 
 官方支持 Python 3.11。Windows 建议使用独立的 3.11 虚拟环境，避免系统
 Anaconda 中 `pyarrow` DLL 与 `pymilvus` 发生 ABI 冲突。
@@ -72,7 +90,7 @@ Langfuse 数据库、加密和初始化密码：
 docker compose --profile langfuse up -d --build
 ```
 
-## 3. 首次验证
+### 首次验证
 
 先只扫描，不改 Milvus：
 
@@ -86,70 +104,85 @@ python -m app.feishu_sync.cli sync --once
 python -m app.feishu_sync.cli worker --once
 ```
 
-查看运行状态（所有管理接口都需要业务 API Key）：
+最后打开 `http://127.0.0.1:8030`，注册一个账号，询问刚同步文档里的独有
+关键词；来源卡片应出现"打开飞书原文"。
 
-```powershell
-curl.exe -H "X-API-Key: $env:SERVICE_API_KEY" `
-  http://127.0.0.1:8030/admin/feishu-sync/status
-```
+## 🔐 认证与多用户
 
-最后打开 `http://127.0.0.1:8030`，询问刚同步文档里的独有关键词；来源卡片应
-出现“打开飞书原文”。
+- `POST /auth/register` / `POST /auth/login` 注册登录，返回 JWT
+  （HS256；密码经 pbkdf2 20 万轮加盐哈希存储，库中无明文）。
+- **双轨认证**：问答端点接受 `Authorization: Bearer <JWT>`；管理端点
+  （`/admin/*`）沿用 `X-API-Key`；旧脚本只带 API Key 也能走问答端点
+  （落到预留的 service 身份）。
+- **数据隔离**：thread 首次被某用户使用即登记归属，其他用户访问返回
+  403；会话列表与历史恢复均经归属校验。
+- **限流按凭证分桶**：JWT 用户各占独立额度，互不挤占。
 
-## CLI
+## 📡 CLI 与管理 API
 
 ```text
 python -m app.feishu_sync.cli sync --once    # 完整递归扫描并排队
 python -m app.feishu_sync.cli worker --once  # 处理当前到期任务后退出
-python -m app.feishu_sync.cli watch          # 启动扫描、Worker、事件和每小时对账
+python -m app.feishu_sync.cli watch          # 启动事件、定时对账与 Worker
 ```
-
-生产部署建议 API 和 `watch` 分成两个进程。`watch` 内的 Worker 使用 SQLite
-30 分钟租约并每分钟续租；异常退出后任务会被重新领取。失败按 1 分钟、5 分钟、
-30 分钟、2 小时退避，最多尝试 5 次。
-
-## 管理 API
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
-| GET | `/admin/feishu-sync/status` | 最近扫描、源健康、积压、失败与语料版本 |
-| GET | `/admin/feishu-sync/documents` | 文档同步状态与原文链接 |
-| GET | `/admin/feishu-sync/jobs` | 任务、重试次数与错误 |
-| POST | `/admin/feishu-sync/run` | 后台触发完整对账 |
-| POST | `/admin/feishu-sync/jobs/{job_id}/retry` | 重试 failed 任务 |
+| POST | `/auth/register` / `/auth/login` | 注册 / 登录，返回 JWT |
+| GET | `/auth/me` / `/auth/sessions` | 当前身份 / 我的会话列表 |
+| GET | `/auth/history/{thread_id}` | 恢复指定会话历史（归属校验） |
+| GET | `/auth/library` | 文献库浏览（搜索 / 个人收藏标记） |
+| GET | `/auth/stats` | 个人统计：会话 / 提问 / Token 用量 |
+| POST | `/auth/feedback` | 回答 👍👎 反馈落库 |
+| GET | `/tools` | Agent 工具清单 |
+| GET | `/admin/logs` `/admin/stats` | 请求日志 / 运行统计 |
+| POST | `/admin/clear-thread` | 清空指定会话记忆（本人或管理员） |
+| GET/POST | `/admin/feishu-sync/*` | 同步状态 / 文档 / 任务 / 手动对账 |
+| POST | `/admin/ingest` | 上传 PDF 走五道质检入库 |
 | POST | `/ask/stream` | SSE 流式问答 |
 
-`SERVICE_API_KEY` 是首选变量；旧部署中的 `FEISHU_SERVICE_API_KEY` 仍兼容。
+`SERVICE_API_KEY` 是管理通道首选变量；旧部署中的 `FEISHU_SERVICE_API_KEY`
+仍兼容。问答端点的限流额度用 `FEISHU_RATE_LIMIT_PER_MINUTE` 调整。
 
-## 同步语义
+## 📦 同步语义
 
 - 同一文件内容 SHA-256 未变化时不会重复生成向量。
-- 对账时会按 item_id 抽查 Milvus 实际行数是否与本地镜像一致；向量库被重建
-  或误删导致台账与数据脱节时，自动清空内容哈希并复活任务走重灌。
-- 文档更新采用“保存旧快照 → 生成新块/向量 → 替换 → 查回质检”；失败会删除
-  新块并恢复旧块。
-- 事件明确删除时立即排队移出 Milvus；扫描首次未发现为
-  `suspect_missing`，连续两次才转 `soft_deleted`。
+- 对账时会按 item_id 抽查 Milvus 实际行数是否与本地镜像一致；向量库被
+  重建或误删导致台账与数据脱节时，自动清空内容哈希并复活任务走重灌。
+- 文档更新采用"保存旧快照 → 生成新块/向量 → 替换 → 查回质检"；失败会
+  删除新块并恢复旧块。
+- 事件明确删除时立即排队移出 Milvus；扫描首次未发现为 `suspect_missing`，
+  连续两次才转 `soft_deleted`。
 - 软删除保留 7 天，期间重新出现会自动恢复；过期后清理本地快照。
-- 每次成功新增、更新或停用都会递增 `corpus_revision`，查询缓存和父块存储
-  无需重启即可看到新内容。
+- 每次成功新增、更新或停用都会递增 `corpus_revision`，查询缓存和父块
+  存储无需重启即可看到新内容。
 
-## 测试
+## 🧪 测试
 
 ```bash
-python -m pytest -q --basetemp=.pytest-tmp
+python -m pytest -q --ignore=tests/integration
 python -m ruff check app tests scripts
 ```
 
-真实飞书凭证测试只允许本地显式运行，不进入公共 CI。Milvus 集成测试由 CI 的
-独立 Docker job 执行。合成样例位于 `examples/`。
+- 单元测试覆盖检索、切块、意图路由、用户体系、限流分桶、上下文窗口、
+  前后端契约等模块，双平台 CI + Milvus 集成测试 + secret 扫描。
+- 真实飞书凭证测试只允许本地显式运行，不进入公共 CI。合成样例位于
+  `examples/`。
+- 检索与问答质量由内置评测脚本守护（挑战集语义评分、检索召回、LLM
+  judge，见 `scripts/`）；评测数据集不随仓库发布。
 
-## 已知限制
+## ⚠️ 已知限制
 
 - 只支持 Docx 和 PDF；图片、附件只保留占位，扫描 PDF 需要安装 MinerU。
-- SQLite 任务队列面向单实例 Worker，不适合横向扩容；后续可替换为 Redis/Celery。
-- 不实现用户级飞书权限映射；PPTX、Sheets、Bitable 和 Wiki 留待后续版本。
-- MinerU 不存在时 `FEISHU_PDF_PARSER=auto` 会回退到 pypdf，扫描件可能无法提取。
+- SQLite 任务队列面向单实例 Worker，不适合横向扩容；后续可替换为
+  Redis/Celery。业务数据同样为 SQLite 单机文件，多实例需迁移集中式库。
+- 不实现用户级飞书权限映射；所有同步进来的语料为全体用户共享，用户
+  隔离作用于会话与历史，而非知识库本身。PPTX、Sheets、Bitable 和 Wiki
+  留待后续版本。
+- MinerU 不存在时 `FEISHU_PDF_PARSER=auto` 会回退到 pypdf，扫描件可能
+  无法提取。
+- 微调图表专家需要自行部署 vLLM 服务（`CHART_EXPERT_*` 配置），未配置
+  时该工具不注册。
 
 ## License
 

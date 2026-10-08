@@ -30,6 +30,25 @@ def get_current_intent() -> str:
     return _current_intent.get()
 
 
+# 当前登录用户的传递：与意图同款机制。写入点在 API 层
+# （require_current_user 依赖 / SSE worker 首行——线程不继承 ContextVar，
+# 跨线程必须显式重设，见 planner_agent.run_steps 的教训），消费点在
+# 工具层（审计日志、将来的按用户隔离）。
+_current_user = contextvars.ContextVar("current_user", default="")
+
+
+def set_current_user(user_id: int | str) -> None:
+    """记录当前请求的用户标识，供本次请求内的工具调用读取。"""
+
+    _current_user.set(str(user_id or ""))
+
+
+def get_current_user() -> str:
+    """读取当前用户标识；不在请求链路里时返回空字符串。"""
+
+    return _current_user.get()
+
+
 # 总结类意图：查询是宽泛的（"总结这篇论文""对比两篇""出个提纲"），
 # reranker 对这类查询和具体段落的相关性打分天然偏低（实测语料内
 # 也只有 0.005~0.76），用事实类的 0.8 门槛会系统性误拒。

@@ -24,16 +24,22 @@ _counters: dict[str, tuple[int, float]] = {}
 
 
 def _client_key(request: Request) -> str:
-    """用 IP + API Key 组成限流身份。
+    """用 IP + 凭证组成限流身份。
 
-    完整 key 只用来算哈希，不进任何字符串——键名、日志、报错里都
-    不能出现原文。
+    凭证取「Bearer JWT 优先，X-API-Key 兜底」——与认证双轨同序。JWT 每
+    用户一枚，登录用户天然各占一个桶，互不挤占额度；旧脚本共用 API Key
+    则共享一个桶（与单 key 时代行为一致）。完整凭证只用来算哈希，不进
+    任何字符串——键名、日志、报错里都不能出现原文。
     """
 
     client_host = request.client.host if request.client else "unknown"
-    api_key = request.headers.get("X-API-Key", "")
-    key_digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:8]
-    return f"{client_host}:{key_digest}"
+    authorization = request.headers.get("Authorization", "")
+    if authorization.startswith("Bearer "):
+        credential = authorization[7:].strip()
+    else:
+        credential = request.headers.get("X-API-Key", "")
+    credential_digest = hashlib.sha256(credential.encode("utf-8")).hexdigest()[:8]
+    return f"{client_host}:{credential_digest}"
 
 
 def _prune_expired(now: float) -> None:

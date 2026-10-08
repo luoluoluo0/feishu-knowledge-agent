@@ -41,7 +41,23 @@ from app.agent import (
     heal_dangling_tool_history,
     run_agent,
 )
-from app.auth import require_api_key
+from app.auth import AuthUser, require_api_key, require_current_user
+from app.tools import normalize_item_id, read_literature_index
+from app.users import (
+    ThreadAccessError,
+    UserError,
+    add_favorite,
+    add_feedback,
+    authenticate_user,
+    create_access_token,
+    ensure_thread_owner,
+    get_token_usage,
+    list_favorites,
+    list_user_threads,
+    register_user,
+    remove_favorite,
+    user_stats,
+)
 from app.checkpoint_store import clear_thread_checkpoints
 from app.config import get_settings
 from app.conversation_store import append_turn, clear_history
@@ -51,6 +67,7 @@ from app.citations import (
     extract_source_blocks_with_number,
     seed_registry_from_history,
 )
+from app.query_context import get_current_user, set_current_user
 from app.streaming import StreamEvent, iter_agent_events
 from app.token_meter import read_token_usage
 
@@ -381,6 +398,7 @@ def log_failure_and_raise(
     )
 
     _safe_record_agent_log(
+        user_id=_resolve_log_user_id(),
         mode=mode,
         thread_id=request.thread_id,
         question=request.question,
@@ -420,6 +438,220 @@ def index():
 
 PROTECTED_DEPENDENCIES = [Depends(require_api_key), Depends(require_rate_limit)]
 
+# 问答端点的用户通道：JWT 或 API Key（service 遗留身份）。
+USER_DEPENDENCIES = [Depends(require_current_user), Depends(require_rate_limit)]
+
+
+def _resolve_log_user_id() -> int | None:
+    """日志归因：请求链路里 ContextVar 已带用户标识（字符串），
+    能转 int 就落库；不在请求链路（脚本/启动期）返回 None。"""
+
+    raw = get_current_user()
+    return int(raw) if raw.isdigit() else None
+
+
+def _ensure_thread_access(thread_id: str, user: AuthUser) -> None:
+    """thread 归属校验：未登记则登记为当前用户；他人已占用则 403。"""
+
+    try:
+        ensure_thread_owner(thread_id, user.user_id)
+    except ThreadAccessError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "success": False,
+                "error_type": "thread_forbidden",
+                "message": "该会话属于其他用户，无法访问。",
+                "thread_id": exc.thread_id,
+            },
+        ) from exc
+
+
+class AuthRequest(BaseModel):
+    username: str
+    password: str
+
+
+class FeedbackRequest(BaseModel):
+    thread_id: str = ""
+    question: str = ""
+    rating: int
+
+
+class FavoriteRequest(BaseModel):
+    item_id: str
+
+
+def _auth_error(exc: UserError) -> HTTPException:
+    return HTTPException(
+        status_code=exc.status_code,
+        detail={
+            "success": False,
+            "error_type": exc.code,
+            "message": exc.message,
+        },
+    )
+
+
+@app.post("/auth/register", dependencies=[Depends(require_rate_limit)])
+def auth_register(request: AuthRequest):
+    """注册新用户，成功即返回令牌（注册即登录）。"""
+
+    try:
+        user = register_user(request.username, request.password)
+    except UserError as exc:
+        raise _auth_error(exc) from exc
+    token = create_access_token(user.user_id, user.username)
+    return {
+        "success": True,
+        "token": token,
+        "user": {"id": user.user_id, "username": user.username},
+    }
+
+
+@app.post("/auth/login", dependencies=[Depends(require_rate_limit)])
+def auth_login(request: AuthRequest):
+    """登录换取 JWT。用户名或密码错误统一 401，不做用户名枚举。"""
+
+    try:
+        user = authenticate_user(request.username, request.password)
+    except UserError as exc:
+        raise _auth_error(exc) from exc
+    token = create_access_token(user.user_id, user.username)
+    return {
+        "success": True,
+        "token": token,
+        "user": {"id": user.user_id, "username": user.username},
+    }
+
+
+@app.get("/auth/me", dependencies=USER_DEPENDENCIES)
+def auth_me(user: AuthUser = Depends(require_current_user)):
+    """校验当前凭证并返回身份。前端用它做令牌有效性探测。"""
+
+    return {"user": {"id": user.user_id, "username": user.username}, "via": user.via}
+
+
+@app.get("/auth/sessions", dependencies=USER_DEPENDENCIES)
+def auth_sessions(user: AuthUser = Depends(require_current_user)):
+    """列出当前用户名下的会话（thread 列表），供前端侧栏同步。"""
+
+    return {"success": True, "sessions": list_user_threads(user.user_id)}
+
+
+@app.get("/auth/history/{thread_id}", dependencies=USER_DEPENDENCIES)
+def auth_history(thread_id: str, user: AuthUser = Depends(require_current_user)):
+    """服务端会话历史：网页刷新/换设备后恢复对话记录的数据源。
+
+    先过归属校验（水平越权防护点），再从 conversation_turns 读问答对。
+    answer 在写入侧已截断到 500 字，恢复的是台账版本。
+    """
+
+    _ensure_thread_access(thread_id, user)
+    from app.conversation_store import load_history
+
+    turns = load_history(thread_id, limit=200)
+    messages = []
+    for turn in turns:
+        if turn.question:
+            messages.append({"role": "user", "content": turn.question})
+        if turn.answer:
+            messages.append({"role": "assistant", "content": turn.answer})
+    return {"success": True, "thread_id": thread_id, "messages": messages}
+
+
+@app.get("/auth/stats", dependencies=USER_DEPENDENCIES)
+def auth_stats(user: AuthUser = Depends(require_current_user)):
+    """工作台统计：我的会话数、累计提问数、知识库文献数。"""
+
+    stats = user_stats(user.user_id)
+    stats["library"] = len(read_literature_index())
+    stats["tokens"] = get_token_usage(user.user_id)
+    return {"success": True, **stats}
+
+
+@app.post("/auth/feedback", dependencies=USER_DEPENDENCIES)
+def auth_feedback(request: FeedbackRequest, user: AuthUser = Depends(require_current_user)):
+    """记录用户对一轮回答的 👍/👎 反馈。"""
+
+    if request.rating not in (1, -1):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "success": False,
+                "error_type": "invalid_rating",
+                "message": "rating 只能是 1（赞）或 -1（踩）。",
+            },
+        )
+    add_feedback(
+        user.user_id, request.thread_id, request.question, request.rating
+    )
+    return {"success": True}
+
+
+@app.get("/auth/library", dependencies=USER_DEPENDENCIES)
+def auth_library(q: str = "", user: AuthUser = Depends(require_current_user)):
+    """文献库浏览：全部文献的编号/标题/整理者/状态，带个人收藏标记。"""
+
+    rows = read_literature_index()
+    keyword = (q or "").strip().lower()
+    favorites = {row["item_id"] for row in list_favorites(user.user_id)}
+    items = []
+    for row in rows:
+        item_id = normalize_item_id(str(row.get("item_id") or ""))
+        searchable = " ".join(
+            str(row.get(field) or "")
+            for field in ("item_id", "title", "reader", "keywords", "theme")
+        ).lower()
+        if keyword and keyword not in searchable:
+            continue
+        items.append(
+            {
+                "item_id": item_id,
+                "title": row.get("title") or "",
+                "reader": row.get("reader") or "",
+                "status": row.get("status") or "",
+                "has_pdf": bool(row.get("paper_file")),
+                "has_ppt": bool(row.get("ppt_file")),
+                "favorite": item_id in favorites,
+            }
+        )
+        if len(items) >= 300:
+            break
+    return {"success": True, "total": len(rows), "items": items}
+
+
+def _normalize_item_or_400(item_id: str) -> str:
+    normalized = normalize_item_id((item_id or "").strip())
+    if not normalized:
+        raise HTTPException(
+            status_code=400,
+            detail={"success": False, "error_type": "invalid_input",
+                    "message": "item_id 不能为空。"},
+        )
+    return normalized
+
+
+@app.post("/auth/favorites", dependencies=USER_DEPENDENCIES)
+def auth_add_favorite(
+    request: FavoriteRequest, user: AuthUser = Depends(require_current_user)
+):
+    item_id = _normalize_item_or_400(request.item_id)
+    add_favorite(user.user_id, item_id)
+    return {"success": True, "item_id": item_id, "favorite": True}
+
+
+@app.delete("/auth/favorites/{item_id}", dependencies=USER_DEPENDENCIES)
+def auth_remove_favorite(item_id: str, user: AuthUser = Depends(require_current_user)):
+    item_id = _normalize_item_or_400(item_id)
+    removed = remove_favorite(user.user_id, item_id)
+    return {"success": True, "item_id": item_id, "favorite": False, "removed": removed}
+
+
+@app.get("/auth/favorites", dependencies=USER_DEPENDENCIES)
+def auth_list_favorites(user: AuthUser = Depends(require_current_user)):
+    return {"success": True, "favorites": list_favorites(user.user_id)}
+
 
 @app.get("/tools", dependencies=PROTECTED_DEPENDENCIES)
 def list_tools():
@@ -447,10 +679,15 @@ def admin_logs(limit: int = Query(20, ge=1, le=100)):
     return {"logs": list_agent_logs(limit=limit)}
 
 
-@app.post("/admin/clear-thread", dependencies=PROTECTED_DEPENDENCIES)
-def clear_thread(request: ClearThreadRequest):
-    """清空某个 thread_id 的 Agent 多轮记忆和会话改写历史。"""
+@app.post("/admin/clear-thread", dependencies=USER_DEPENDENCIES)
+def clear_thread(request: ClearThreadRequest, user: AuthUser = Depends(require_current_user)):
+    """清空某个 thread_id 的 Agent 多轮记忆和会话改写历史。
 
+    双轨语义：API Key（service 身份）是管理通道，可清任意 thread；
+    JWT 用户只能清自己名下的会话，越权 403。
+    """
+
+    _ensure_thread_access(request.thread_id, user)
     clear_cached_agent("tool_agent")
     result = clear_thread_checkpoints(request.thread_id)
     result["deleted_turns"] = clear_history(request.thread_id)
@@ -1357,14 +1594,16 @@ def admin_ingest_status(task_id: str):
     return {"success": True, **task}
 
 
-@app.post("/chat", dependencies=PROTECTED_DEPENDENCIES)
-def chat(request: ChatRequest):
+@app.post("/chat", dependencies=[Depends(require_rate_limit)])
+def chat(request: ChatRequest, user: AuthUser = Depends(require_current_user)):
     """标准工具调用 Agent 接口。
 
     适合普通问答、开放式问题。
     模型自己决定调用哪个工具、调用几次、什么时候结束。
     """
 
+    _ensure_thread_access(request.thread_id, user)
+    set_current_user(user.user_id)
     started_at = time.perf_counter()
 
     try:
@@ -1380,6 +1619,7 @@ def chat(request: ChatRequest):
         latency_ms = int((time.perf_counter() - started_at) * 1000)
 
         log_id = _safe_record_agent_log(
+            user_id=_resolve_log_user_id(),
             mode="tool_agent",
             thread_id=request.thread_id,
             question=request.question,
@@ -1424,14 +1664,16 @@ def chat(request: ChatRequest):
     return response
 
 
-@app.post("/planner-chat", dependencies=PROTECTED_DEPENDENCIES)
-def planner_chat(request: ChatRequest):
+@app.post("/planner-chat", dependencies=[Depends(require_rate_limit)])
+def planner_chat(request: ChatRequest, user: AuthUser = Depends(require_current_user)):
     """可控 PlannerAgent 接口。
 
     适合组会汇报提纲、论文对比、多资料综合这类复杂任务。
     它会先生成计划，再按计划调用检索工具。
     """
 
+    _ensure_thread_access(request.thread_id, user)
+    set_current_user(user.user_id)
     started_at = time.perf_counter()
 
     try:
@@ -1452,6 +1694,7 @@ def planner_chat(request: ChatRequest):
         latency_ms = int((time.perf_counter() - started_at) * 1000)
 
         log_id = _safe_record_agent_log(
+            user_id=_resolve_log_user_id(),
             mode="planner_agent",
             thread_id=request.thread_id,
             question=request.question,
@@ -1510,8 +1753,8 @@ def planner_chat(request: ChatRequest):
     return response
 
 
-@app.post("/ask", dependencies=PROTECTED_DEPENDENCIES)
-def ask(request: ChatRequest):
+@app.post("/ask", dependencies=[Depends(require_rate_limit)])
+def ask(request: ChatRequest, user: AuthUser = Depends(require_current_user)):
     """统一入口：由意图识别自动选择执行链路。
 
     组会汇报提纲、文献对比这类步骤相对固定的任务交给 PlannerAgent，
@@ -1520,6 +1763,9 @@ def ask(request: ChatRequest):
     响应里的 mode 是实际执行的链路，intent 说明为什么这么选。
     预处理只做一次，两条链路共用同一份改写与分类结果。
     """
+
+    _ensure_thread_access(request.thread_id, user)
+    set_current_user(user.user_id)
 
     started_at = time.perf_counter()
     planned_mode = TOOL_AGENT
@@ -1544,6 +1790,7 @@ def ask(request: ChatRequest):
             latency_ms = int((time.perf_counter() - started_at) * 1000)
 
             log_id = _safe_record_agent_log(
+                user_id=_resolve_log_user_id(),
                 mode=PLANNER_AGENT,
                 thread_id=request.thread_id,
                 question=request.question,
@@ -1573,6 +1820,7 @@ def ask(request: ChatRequest):
             latency_ms = int((time.perf_counter() - started_at) * 1000)
 
             log_id = _safe_record_agent_log(
+                user_id=_resolve_log_user_id(),
                 mode=TOOL_AGENT,
                 thread_id=request.thread_id,
                 question=request.question,
@@ -1648,8 +1896,12 @@ _stream_executor = ThreadPoolExecutor(max_workers=16, thread_name_prefix="sse-br
 _STREAM_POLL_SECONDS = 15.0
 
 
-@app.post("/ask/stream", dependencies=PROTECTED_DEPENDENCIES)
-async def ask_stream(http_request: Request, request: ChatRequest):
+@app.post("/ask/stream", dependencies=[Depends(require_rate_limit)])
+async def ask_stream(
+    http_request: Request,
+    request: ChatRequest,
+    user: AuthUser = Depends(require_current_user),
+):
     """流式版的 /ask。
 
     一边跑一边推：理解结果、正在调用的工具、答案的每个片段。
@@ -1662,6 +1914,7 @@ async def ask_stream(http_request: Request, request: ChatRequest):
     它的 checkpointer 不支持异步方法。详见 app/streaming.py。
     """
 
+    _ensure_thread_access(request.thread_id, user)
     events: queue.Queue = queue.Queue()
     sentinel = object()
     # 客户端断开后由消费端置位，worker 在步骤间隙检查它，尽早止损。
@@ -1670,6 +1923,10 @@ async def ask_stream(http_request: Request, request: ChatRequest):
     tool_texts: list[tuple[str, str]] = []
 
     def worker() -> None:
+        # worker 是独立线程，不继承 ContextVar：用户身份必须在
+        # worker 内显式重设，工具层的审计日志才能拿到（同
+        # planner_agent.run_steps 的教训）。
+        set_current_user(user.user_id)
         started_at = time.perf_counter()
         parts: list[str] = []
         tools: list[dict] = []
@@ -1807,6 +2064,7 @@ async def ask_stream(http_request: Request, request: ChatRequest):
             unique_sources = cap_sources_with_citations(sources, answer)
 
             _safe_record_agent_log(
+                user_id=_resolve_log_user_id(),
                 mode=mode,
                 thread_id=request.thread_id,
                 question=request.question,

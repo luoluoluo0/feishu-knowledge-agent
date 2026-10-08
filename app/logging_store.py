@@ -58,6 +58,7 @@ def ensure_log_columns(connection: sqlite3.Connection) -> None:
         "ALTER TABLE agent_logs ADD COLUMN out_tokens INTEGER",
         "ALTER TABLE agent_logs ADD COLUMN total_tokens INTEGER",
         "ALTER TABLE agent_logs ADD COLUMN llm_calls INTEGER",
+        "ALTER TABLE agent_logs ADD COLUMN user_id INTEGER",
     ):
         try:
             connection.execute(statement)
@@ -77,6 +78,7 @@ def record_agent_log(
     latency_ms: int,
     intent: str | None = None,
     token_usage: dict[str, int] | None = None,
+    user_id: int | None = None,
 ) -> int:
     """保存一次 Agent 请求日志，并返回日志 id。"""
 
@@ -101,9 +103,10 @@ def record_agent_log(
                 in_tokens,
                 out_tokens,
                 total_tokens,
-                llm_calls
+                llm_calls,
+                user_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 datetime.now().isoformat(timespec="seconds"),
@@ -120,6 +123,7 @@ def record_agent_log(
                 usage.get("output_tokens"),
                 usage.get("total_tokens"),
                 usage.get("llm_calls"),
+                user_id,
             ),
         )
         return int(cursor.lastrowid)

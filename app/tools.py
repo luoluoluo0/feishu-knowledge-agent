@@ -8,7 +8,7 @@ from app.hybrid_retriever import HybridRetriever
 from app.milvus_store import MilvusStore
 from app.qdrant_store import QdrantStore, RetrievedChunk
 from app import query_cache
-from app.query_context import get_current_intent, min_score_for_intent
+from app.query_context import get_current_intent, get_current_user, min_score_for_intent
 
 
 logger = logging.getLogger(__name__)
@@ -348,6 +348,13 @@ class PaperSearchTools:
         min_score = min_score_for_intent(intent, self.settings)
         if intent:
             logger.info("rerank 门槛按意图分档：%s -> %.2f", intent, min_score)
+
+        # 工具绑定身份的审计落点：检索工具带出调用者（登录用户 id 或
+        # service 遗留身份）。语料当前按设计共享（README 已声明），这里
+        # 先保证「每次工具调用可归因」，为按用户隔离打地基。
+        user_id = get_current_user()
+        if user_id:
+            logger.info("检索审计：user=%s query=%s", user_id, query[:60])
 
         # 参考文献块按意图过滤。内容型意图下排除：重排对参考文献区打分
         # 虚高（满屏"方法""研究"字样），实测它能把正文方法章节挤到第 3、

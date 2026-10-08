@@ -3,6 +3,7 @@ fastapi==0.136.1
 python-multipart==0.0.22
 uvicorn==0.46.0
 python-dotenv==1.2.2
+PyJWT==2.15.1
 requests==2.33.1
 pydantic==2.10.3
 filelock==3.13.1

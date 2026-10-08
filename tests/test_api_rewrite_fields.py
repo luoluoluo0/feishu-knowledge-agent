@@ -4,7 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import api as api_module
-from app.auth import require_api_key
+from app.auth import require_api_key, require_current_user
+from app.users import AuthUser
 from app.coreference import RewriteResult
 from app.planner import PlanResult
 from app.rate_limit import require_rate_limit
@@ -16,6 +17,11 @@ def client():
 
     api_module.app.dependency_overrides[require_api_key] = lambda: True
     api_module.app.dependency_overrides[require_rate_limit] = lambda: None
+    # 问答/清理端点已切换到用户依赖：以 service 遗留身份通过，
+    # 归属校验对 user_id=0 不设限（管理通道语义）。
+    api_module.app.dependency_overrides[require_current_user] = lambda: AuthUser(
+        user_id=0, username="service", via="api_key"
+    )
     try:
         yield TestClient(api_module.app)
     finally:
